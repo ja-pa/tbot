@@ -295,6 +295,7 @@ fs::path command_script(const fs::path& config, const Snapshot& snapshot, const 
 Json public_view(const Snapshot& snapshot) {
     const auto& telegram = snapshot.config.at("telegram");
     const auto& notifications = snapshot.config.at("notifications");
+    const auto http = notifications.value("http", Json::object());
     Json users = Json::array(), commands = Json::array();
     for (const auto& user : telegram.value("two_factor_users", Json::array()))
         users.push_back({{"user_id", std::to_string(user.at("user_id").get<std::int64_t>())},
@@ -318,6 +319,12 @@ Json public_view(const Snapshot& snapshot) {
             {"poll_timeout_seconds", telegram.value("poll_timeout_seconds", 30)},
             {"chat_ids", string_ids(notifications.at("chat_ids"))},
             {"socket_path", notifications.value("socket_path", "/tmp/tbot-wrt.sock")},
+            {"http", {{"enabled", http.value("enabled", false)},
+                      {"listen_address", http.value("listen_address", "127.0.0.1")},
+                      {"port", http.value("port", 8088)},
+                      {"username", http.value("username", "")},
+                      {"password_present", !http.value("password", std::string()).empty()},
+                      {"password_action", "keep"}}},
             {"commands_file", snapshot.config.value("commands_file", "commands.json")},
             {"two_factor_users", users}, {"commands", commands}};
 }
@@ -428,6 +435,16 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
     telegram["poll_timeout_seconds"] = request.at("poll_timeout_seconds");
     config["notifications"]["chat_ids"] = ids(request.at("chat_ids"), false);
     config["notifications"]["socket_path"] = request.at("socket_path").get<std::string>();
+    if (request.contains("http")) {
+        const auto& source = request.at("http");
+        auto& target = config["notifications"]["http"];
+        if (target.is_null()) target = Json::object();
+        for (const auto* key : {"enabled", "listen_address", "port", "username"})
+            target[key] = source.at(key);
+        const auto action = source.at("password_action").get<std::string>();
+        if (action == "replace") target["password"] = source.at("password").get<std::string>();
+        else if (action != "keep") fail("Neplatná operace s HTTP heslem");
+    }
     if (!request.at("two_factor_users").is_array() || !request.at("commands").is_array())
         fail("Uživatelé a příkazy musí být pole");
     Json users = Json::array();

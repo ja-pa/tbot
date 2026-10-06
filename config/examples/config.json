@@ -11,7 +11,14 @@
     "chat_ids": [
       123456789
     ],
-    "socket_path": "/tmp/tbot-wrt.sock"
+    "socket_path": "/tmp/tbot-wrt.sock",
+    "http": {
+      "enabled": false,
+      "listen_address": "127.0.0.1",
+      "port": 8088,
+      "username": "",
+      "password": ""
+    }
   },
   "commands_file": "commands.json"
 }

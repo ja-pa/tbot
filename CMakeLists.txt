@@ -28,6 +28,8 @@ endif()
 
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MICROHTTPD REQUIRED IMPORTED_TARGET libmicrohttpd>=0.9.71)
 
 add_library(tiny2fa STATIC
     third_party/tiny2fa/tiny2fa.c
@@ -49,6 +51,7 @@ add_library(tbot_core
     src/commands.cpp
     src/config.cpp
     src/notification_service.cpp
+    src/notification_http.cpp
     src/script_runner.cpp
     src/telegram_client.cpp
 )
@@ -56,7 +59,7 @@ add_library(tbot_core
 target_include_directories(tbot_core PUBLIC include)
 target_link_libraries(
     tbot_core
-    PUBLIC tiny2fa qrcodegen CURL::libcurl nlohmann_json::nlohmann_json Threads::Threads
+    PUBLIC tiny2fa qrcodegen CURL::libcurl nlohmann_json::nlohmann_json Threads::Threads PkgConfig::MICROHTTPD
 )
 target_compile_options(tbot_core PRIVATE -Wall -Wextra -Wpedantic)
 
@@ -87,6 +90,10 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(notification-http-tests tests/notification_http_tests.cpp)
+    target_link_libraries(notification-http-tests PRIVATE tbot_core)
+    target_compile_options(notification-http-tests PRIVATE -UNDEBUG)
+    add_test(NAME notification-http COMMAND notification-http-tests)
     if(TBOT_BUILD_OPENWRT_ADMIN)
         add_executable(admin-tests tests/openwrt/admin_tests.cpp)
         target_link_libraries(admin-tests PRIVATE tbot_wrt_admin)

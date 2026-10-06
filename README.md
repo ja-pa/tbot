@@ -10,7 +10,7 @@ jsou v [tbot-wrt](https://github.com/ja-pa/tbot-wrt).
 V Ubuntu / WSL:
 
 ```bash
-sudo apt install build-essential cmake ninja-build git libcurl4-openssl-dev
+sudo apt install build-essential cmake ninja-build git libcurl4-openssl-dev libmicrohttpd-dev pkg-config
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
@@ -24,6 +24,90 @@ přibalené v `third_party` včetně licencí.
 Projekt lze vložit pomocí `add_subdirectory`; knihovna `tbot_core` poskytuje
 hlavičky `tbot/*.hpp` a namespace `tbot`. Programy jsou `tbot` a `tbot-send`.
 Při cross-kompilaci lze testy vypnout přes `-DBUILD_TESTING=OFF`.
+
+## HTTP notifikace z LAN / VPN
+
+Volitelná sekce `notifications.http` zpřístupní odesílání zpráv z jiných
+zařízení. Bez sekce nebo s `enabled: false` daemon žádný TCP port neotevírá.
+Příklad sekce uvnitř `notifications`:
+
+```json
+"http": {
+  "enabled": true,
+  "listen_address": "192.168.1.1",
+  "port": 8088,
+  "username": "notifier",
+  "password": "REPLACE_WITH_YOUR_OWN_PASSWORD"
+}
+```
+
+Adresa musí být konkrétní lokální unicast IPv4 routeru (nikoli `0.0.0.0`);
+`127.0.0.1` umožňuje jen místní přístup. Výchozí port je 8088. Při zapnutí
+musí být jméno i heslo neprázdné, nejvýše 256 bajtů, bez NUL/CR/LF;
+jméno nesmí obsahovat dvojtečku. Jde o samostatné přihlášení, ne Telegram
+token ani účet operačního systému. Uložení konfigurace vyžaduje restart.
+Nepřiřazená adresa nebo obsazený port způsobí chybu startu služby.
+
+HTTP Basic přenáší přihlášení a zprávu v LAN nešifrovaně. Používejte pouze
+důvěryhodnou LAN nebo VPN. Firewall se automaticky nemění; port nevystavujte
+na WAN. Heslo je uložené v konfiguraci, kterou chraňte právy `0600`.
+
+```sh
+# curl si vyžádá heslo; nepřidávejte ho do URL.
+curl --fail-with-body --user notifier \
+  -H 'Content-Type: text/plain; charset=utf-8' \
+  --data-binary 'Záloha serveru dokončena' \
+  http://192.168.1.1:8088/v1/notifications
+
+# Víceřádková zpráva ze souboru:
+curl --fail-with-body --user notifier \
+  -H 'Content-Type: text/plain; charset=utf-8' \
+  --data-binary @report.txt \
+  http://192.168.1.1:8088/v1/notifications
+```
+
+Hotový Bash příklad je v [examples/tbot-send-http.sh](examples/tbot-send-http.sh).
+Z kořene repozitáře `tbot` ho spustíte s jedním argumentem:
+
+```bash
+bash examples/tbot-send-http.sh "Záloha dokončena"
+
+# Vlastní adresa a uživatelské jméno:
+TBOT_URL=http://192.168.1.1:8088 TBOT_USER=notifier \
+  bash examples/tbot-send-http.sh "Zpráva z počítače"
+```
+
+Heslo HTTP API si vyžádá `curl`; nejde o SSH heslo routeru. Skript vyžaduje
+Bash a curl s podporou `--fail-with-body`. Při HTTP chybě skončí nenulovým
+kódem a vypíše odpověď serveru. Volba `--help` zobrazí použití.
+
+API přijímá pouze `POST /v1/notifications` s prostým UTF-8 textem, 1–3500
+bajtů, bez NUL. `text/plain` bez parametru znamená také UTF-8. Obsah se
+předává beze změn, včetně konců řádků. Přílohy, komprese a jiné typy obsahu
+nejsou podporovány. Příjemce určuje výhradně `notifications.chat_ids`.
+
+| HTTP | Význam |
+| --- | --- |
+| 202 | `{"ok":true,"status":"queued"}` — přijato do fronty |
+| 400 | Prázdný text, NUL nebo neplatné UTF-8 |
+| 401 | Chybějící nebo nesprávné přihlášení |
+| 404 / 405 | Neznámá cesta / nepovolená metoda |
+| 413 / 415 | Příliš dlouhá zpráva / nepodporovaný obsah |
+| 503 | Plná fronta; zpráva nebyla přijata (`Retry-After: 1`) |
+
+Chyby aplikace vracejí JSON `{"ok":false,"error":"kod_chyby"}`.
+Vadné HTTP rámování může odmítnout samotná HTTP knihovna. Server omezuje
+počet spojení na 8, nečinnost na 5 sekund a paměť spojení na 16 KiB.
+
+HTTP a lokální socket sdílejí frontu 10 zpráv a interval odesílání alespoň
+jednu sekundu mezi zprávami. HTTP při plné frontě odmítne novou zprávu;
+lokální socket nadále zahazuje nejstarší. Přijetí proto nezaručuje doručení:
+zpráva může zaniknout při restartu, chybě Telegramu nebo zaplnění lokálním
+odesílatelem. Automatické opakování HTTP požadavku po síťové chybě může
+vytvořit duplicitu. Trvalá fronta ani potvrzení doručení nejsou součástí API.
+`tbot-send` zůstává lokálním klientem.
+Log úspěšného odeslání uvádí počet chatů, kterým Telegram API potvrdilo
+přijetí; neobsahuje text zprávy ani přihlašovací údaje.
 
 ## Volitelná OpenWrt administrace
 

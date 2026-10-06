@@ -49,6 +49,22 @@ bool NotificationQueue::try_pop(std::string& message) {
     return true;
 }
 
+bool NotificationQueue::try_push(std::string message) {
+    if (messages_.size() >= maximum_queued_notifications) return false;
+    messages_.push_back(std::move(message));
+    return true;
+}
+
+bool NotificationService::try_enqueue(std::string message) {
+    if (message.empty() || message.size() > maximum_notification_bytes) return false;
+    {
+        std::lock_guard lock(mutex_);
+        if (stopping_.load() || !queue_.try_push(std::move(message))) return false;
+    }
+    queue_changed_.notify_one();
+    return true;
+}
+
 std::size_t NotificationQueue::size() const noexcept {
     return messages_.size();
 }
@@ -189,14 +205,18 @@ void NotificationService::send_loop() {
             queue_.try_pop(message);
         }
 
+        std::size_t delivered = 0;
         for (const auto chat_id : chat_ids_) {
             try {
                 telegram_.send_message(chat_id, message);
+                ++delivered;
             } catch (const std::exception& error) {
                 std::cerr << "Odeslání lokální notifikace do chat_id=" << chat_id
                           << " selhalo: " << error.what() << '\n';
             }
         }
+        if (delivered != 0)
+            std::cout << "Notifikace odeslána do Telegramu: " << delivered << " chatů." << std::endl;
         next_send = std::chrono::steady_clock::now() + send_interval;
     }
 }

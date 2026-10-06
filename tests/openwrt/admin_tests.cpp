@@ -42,11 +42,16 @@ int main() {
     };
     Json original_commands = {{"future", 42}, {"commands", {{{"name", "status"}, {"description", "Stav"},
         {"script", "script.sh"}, {"custom", "keep me"}, {"button", {{"text", "Stav"}, {"row", 0}, {"future", 1}}}}}}};
+    original["notifications"]["http"] = {{"enabled", true}, {"listen_address", "127.0.0.1"},
+        {"port", 8088}, {"username", "device"}, {"password", "private-http-password"}, {"future", 123}};
     write(config, original.dump()); write(commands, original_commands.dump());
     tbot_wrt::AdminConfig admin(config);
     auto view = admin.load();
     assert(view.dump().find(secret) == std::string::npos);
     assert(view.dump().find("private-token") == std::string::npos);
+    assert(view.dump().find("private-http-password") == std::string::npos);
+    assert(view["http"]["password_present"] == true);
+    assert(!view["http"].contains("password"));
     assert(view.at("allowed_user_ids").at(0) == "9223372036854775807");
     assert(view.at("chat_ids").at(0) == "-9223372036854775807");
     assert(view["commands"][0]["enabled"] == true);
@@ -58,6 +63,7 @@ int main() {
     auto saved = Json::parse(read(config));
     auto saved_commands = Json::parse(read(commands));
     assert(saved.at("telegram").at("token") == "private-token");
+    assert(saved["notifications"]["http"] == original["notifications"]["http"]);
     assert(saved.at("telegram").at("two_factor_users").at(0).at("secret") == secret);
     assert(saved.at("telegram").at("two_factor_users").at(0).at("extra") == 7);
     assert(saved.at("future") == original.at("future"));
@@ -70,18 +76,27 @@ int main() {
     rejects([&] { admin.save(view); }); // stale revision
 
     auto legacy = admin.load(); legacy["token_action"] = "keep";
+    legacy.erase("http"); // Old clients must preserve all HTTP settings, including the secret.
     assert(legacy["commands"][0]["enabled"] == false);
     legacy["commands"][0].erase("enabled");
     auto new_command = legacy["commands"][0];
     new_command["original_name"] = ""; new_command["name"] = "new_command";
     legacy["commands"].push_back(new_command);
     admin.save(legacy);
+    assert(Json::parse(read(config))["notifications"]["http"] == original["notifications"]["http"]);
     auto compatibility = Json::parse(read(commands));
     assert(compatibility["commands"][0]["enabled"] == false);
     assert(compatibility["commands"][1]["enabled"] == true);
     auto cleanup = admin.load(); cleanup["token_action"] = "keep";
     cleanup["commands"].erase(1);
     admin.save(cleanup);
+    auto http_replacement = admin.load(); http_replacement["token_action"] = "keep";
+    http_replacement["http"]["password_action"] = "replace";
+    http_replacement["http"]["password"] = "replacement-http-password";
+    auto replaced = admin.save(http_replacement);
+    assert(replaced.dump().find("replacement-http-password") == std::string::npos);
+    assert(Json::parse(read(config))["notifications"]["http"]["password"] == "replacement-http-password");
+    assert(Json::parse(read(config))["notifications"]["http"]["future"] == 123);
     auto request = admin.load(); request["token_action"] = "keep";
     const auto before_config = read(config), before_commands = read(commands);
     const auto invalid = [&](const std::function<void(Json&)>& change) {
@@ -91,6 +106,10 @@ int main() {
     };
     for (const auto& bad : {Json("false"), Json(0), Json(nullptr), Json::array(), Json::object()})
         invalid([&](Json& value) { value["commands"][0]["enabled"] = bad; });
+    invalid([](Json& value) { value["http"]["listen_address"] = "0.0.0.0"; });
+    invalid([](Json& value) { value["http"]["port"] = 1.5; });
+    invalid([](Json& value) { value["http"]["password_action"] = "erase"; });
+    invalid([](Json& value) { value["http"]["password_action"] = "replace"; value["http"]["password"] = ""; });
     invalid([](Json& value) { value["poll_timeout_seconds"] = 51; });
     invalid([](Json& value) { value["poll_timeout_seconds"] = 1.5; });
     invalid([](Json& value) { value["allowed_user_ids"] = {"9223372036854775808"}; });

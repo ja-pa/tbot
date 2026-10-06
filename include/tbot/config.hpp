@@ -29,9 +29,18 @@ struct TelegramConfig {
     int poll_timeout_seconds{30};
 };
 
+struct NotificationHttpConfig {
+    bool enabled{false};
+    std::string listen_address{"127.0.0.1"};
+    int port{8088};
+    std::string username;
+    std::string password;
+};
+
 struct NotificationsConfig {
     std::vector<std::int64_t> chat_ids;
     std::filesystem::path socket_path{"/tmp/tbot-wrt.sock"};
+    NotificationHttpConfig http;
 };
 
 class CommandsConfig {

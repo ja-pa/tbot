@@ -1,4 +1,5 @@
 #include "tbot/config.hpp"
+#include <arpa/inet.h>
 
 #include <nlohmann/json.hpp>
 
@@ -228,6 +229,19 @@ TbotConfig TbotConfig::from_json(const std::filesystem::path& config_path,
         }
         notifications.socket_path = notifications_json.value(
             "socket_path", std::string("/tmp/tbot-wrt.sock"));
+        if (notifications_json.contains("http")) {
+            const auto& http = notifications_json.at("http");
+            if (!http.is_object()) throw std::runtime_error("notifications.http musí být objekt");
+            auto& target = notifications.http;
+            target.enabled = http.value("enabled", false);
+            target.listen_address = http.value("listen_address", std::string("127.0.0.1"));
+            if (http.contains("port") && (!http.at("port").is_number_integer() ||
+                http.at("port") < 1 || http.at("port") > 65535))
+                throw std::runtime_error("HTTP port musí být celé číslo 1 až 65535");
+            target.port = http.value("port", 8088);
+            target.username = http.value("username", std::string());
+            target.password = http.value("password", std::string());
+        }
 
         commands_path = resolve_path(
             config_path, json.value("commands_file", std::string("commands.json")));
@@ -264,6 +278,20 @@ std::filesystem::path TbotConfig::resolve_path(
 
 void TbotConfig::validate(const TelegramConfig& telegram,
                           const NotificationsConfig& notifications) {
+    const auto& http = notifications.http;
+    in_addr address{};
+    if (http.listen_address.find('\0') != std::string::npos ||
+        inet_pton(AF_INET, http.listen_address.c_str(), &address) != 1 ||
+        (ntohl(address.s_addr) >> 24) == 0 || (ntohl(address.s_addr) >> 24) >= 224)
+        throw std::runtime_error("HTTP vyžaduje konkrétní unicast IPv4 adresu");
+    const auto invalid_credential = [](const std::string& value) {
+        return value.size() > 256 || value.find_first_of(std::string("\0\r\n", 3)) != std::string::npos;
+    };
+    if (invalid_credential(http.username) || invalid_credential(http.password) ||
+        http.username.find(':') != std::string::npos)
+        throw std::runtime_error("Neplatné HTTP přihlašovací údaje (max. 256 bajtů, jméno bez dvojtečky)");
+    if (http.enabled && (http.username.empty() || http.password.empty()))
+        throw std::runtime_error("Zapnuté HTTP API vyžaduje jméno a heslo");
     if (telegram.token.empty()) {
         throw std::runtime_error("telegram.token nesmí být prázdný");
     }

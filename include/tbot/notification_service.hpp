@@ -20,6 +20,7 @@ class NotificationQueue {
 public:
     // Returns true when the oldest queued message had to be discarded.
     bool push(std::string message);
+    bool try_push(std::string message);
     bool try_pop(std::string& message);
     std::size_t size() const noexcept;
 
@@ -36,6 +37,7 @@ public:
 
     NotificationService(const NotificationService&) = delete;
     NotificationService& operator=(const NotificationService&) = delete;
+    bool try_enqueue(std::string message);
 
 private:
     void receive_loop();

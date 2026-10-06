@@ -1,5 +1,6 @@
 #include "tbot/application.hpp"
 #include "tbot/notification_service.hpp"
+#include "tbot/notification_http.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -190,6 +191,8 @@ void Application::run(const std::atomic_bool& stop_requested) {
     NotificationService notifications(config_.telegram().token,
                                       config_.notifications().chat_ids,
                                       config_.notifications().socket_path);
+    NotificationHttpServer http(config_.notifications().http,
+        [&notifications](std::string message) { return notifications.try_enqueue(std::move(message)); });
 
     std::cout << "Bot běží. Ukončení: Ctrl+C\n";
 
