@@ -2,7 +2,7 @@
 
 Malý Telegram bot pro Linux v C++20. Obsahuje long polling přes libcurl,
 allowlist uživatelů, menu příkazů, TOTP 2FA, spouštění nakonfigurovaných skriptů
-a lokální notifikace přes Unix socket. OpenWrt balíčky, LuCI a routerové skripty
+a lokální notifikace přes Unix socket. Volitelně obsahuje také OpenWrt administrační backend. OpenWrt balíčky, LuCI a routerové skripty
 jsou v [tbot-wrt](https://github.com/ja-pa/tbot-wrt).
 
 ## Sestavení a testy
@@ -24,6 +24,23 @@ přibalené v `third_party` včetně licencí.
 Projekt lze vložit pomocí `add_subdirectory`; knihovna `tbot_core` poskytuje
 hlavičky `tbot/*.hpp` a namespace `tbot`. Programy jsou `tbot` a `tbot-send`.
 Při cross-kompilaci lze testy vypnout přes `-DBUILD_TESTING=OFF`.
+
+## Volitelná OpenWrt administrace
+
+C++ backend `tbot-wrt-admin` je v `src/openwrt`, hlavička v
+`include/tbot/openwrt` a testy v `tests/openwrt`. Standardně se nesestavuje.
+Zapnutí vytvoří také knihovnu `tbot_wrt_admin` a při `BUILD_TESTING=ON`
+zaregistruje test `admin-configuration`:
+
+```bash
+cmake -S . -B build/admin -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTBOT_BUILD_OPENWRT_ADMIN=ON
+cmake --build build/admin
+ctest --test-dir build/admin --output-on-failure
+```
+
+Instalace zapnutého backendu přidá `libexec/tbot-wrt-admin`. Jeho konfiguraci
+lze testovat na Linuxu; řízení služby za běhu vyžaduje OpenWrt ubus/procd.
+LuCI frontend, RPC shellový adaptér a init skript dodává `tbot-wrt`.
 
 ## První spuštění
 

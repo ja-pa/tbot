@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(TBOT_BUILD_OPENWRT_ADMIN "Build the OpenWrt administration backend" OFF)
+
 option(TBOT_USE_SYSTEM_JSON "Use system nlohmann/json headers instead of fetching them" OFF)
 
 if(TBOT_USE_SYSTEM_JSON)
@@ -73,8 +75,24 @@ install(FILES third_party/tiny2fa/include/google_pam/LICENSE
 install(FILES third_party/qrcodegen/LICENSE.txt
     DESTINATION share/licenses/tbot RENAME QRCodeGenerator-MIT.txt)
 
+if(TBOT_BUILD_OPENWRT_ADMIN)
+    add_library(tbot_wrt_admin src/openwrt/admin.cpp)
+    target_link_libraries(tbot_wrt_admin PUBLIC tbot_core)
+    target_compile_options(tbot_wrt_admin PRIVATE -Wall -Wextra -Wpedantic)
+    add_executable(tbot-wrt-admin src/openwrt/admin_main.cpp)
+    target_link_libraries(tbot-wrt-admin PRIVATE tbot_wrt_admin)
+    target_compile_options(tbot-wrt-admin PRIVATE -Wall -Wextra -Wpedantic)
+    install(TARGETS tbot-wrt-admin RUNTIME DESTINATION libexec)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
+    if(TBOT_BUILD_OPENWRT_ADMIN)
+        add_executable(admin-tests tests/openwrt/admin_tests.cpp)
+        target_link_libraries(admin-tests PRIVATE tbot_wrt_admin)
+        target_compile_options(admin-tests PRIVATE -UNDEBUG)
+        add_test(NAME admin-configuration COMMAND admin-tests)
+    endif()
     add_executable(disabled-callback-tests tests/disabled_callback_tests.cpp)
     target_link_libraries(disabled-callback-tests PRIVATE tbot_core)
     target_compile_options(disabled-callback-tests PRIVATE -UNDEBUG)
