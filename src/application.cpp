@@ -42,42 +42,42 @@ bool Application::is_authorized(std::int64_t user_id) const {
 
 CommandResponse Application::execute(std::string_view input,
                                      const CommandContext& context) {
-    if (!is_authorized(context.user_id)) return {.text = "Přístup zamítnut"};
+    if (!is_authorized(context.user_id)) return {.text = "Access denied"};
     const std::string name = command_name_from_input(input, commands_);
     const bool private_chat = context.private_chat && context.chat_id == context.user_id;
     if (name == "auth" || name == "lock") {
-        if (!private_chat) return {.text = "Ověření je dostupné pouze v soukromém chatu."};
+        if (!private_chat) return {.text = "Authentication is only available in private chats."};
         if (name == "lock") {
             two_factor_.lock(context.user_id);
-            return {.text = "Přístup byl zamknut.", .show_menu = true};
+            return {.text = "Access locked.", .show_menu = true};
         }
         const auto separator = input.find_first_of(" \t\r\n");
         if (separator == std::string_view::npos)
-            return {.text = "Použij /auth 123456 s kódem z autentizační aplikace."};
+            return {.text = "Use /auth 123456 with the code from your authenticator app."};
         auto code = input.substr(separator);
         const auto first = code.find_first_not_of(" \t\r\n");
         if (first == std::string_view::npos) code = {};
         else code = code.substr(first, code.find_last_not_of(" \t\r\n") - first + 1);
         if (!two_factor_.verify(context.user_id, code))
-            return {.text = "Ověření selhalo. Zkontroluj kód a nastavení 2FA. Po pěti chybných pokusech vyčkej 5 minut."};
-        return {.text = "Ověřeno na 5 minut. Přístup ukončíš příkazem /lock.", .show_menu = true};
+            return {.text = "Authentication failed. Check your code and 2FA settings. After five failed attempts, wait 5 minutes."};
+        return {.text = "Authenticated for 5 minutes. Use /lock to end access.", .show_menu = true};
     }
     const auto* command = commands_.find(name);
     if (!command || !command->enabled || (command->requires_2fa &&
         (!private_chat || !two_factor_.authenticated(context.user_id)))) {
         return {
-            .text = "Neznámý příkaz. Použij /help nebo tlačítka v nabídce.",
+            .text = "Unknown command. Use /help or the menu buttons.",
         };
     }
 
     try {
         auto response = command->handler(context);
         if (private_chat && (name == "start" || name == "help"))
-            response.text += "\n\n/auth 123456 — ověření na 5 minut\n/lock — zamknout přístup";
+            response.text += "\n\n/auth 123456 — authenticate for 5 minutes\n/lock — lock access";
         return response;
     } catch (const std::exception& error) {
         return {
-            .text = "Příkaz /" + command->name + " se nepodařilo provést: " + error.what(),
+            .text = "Command /" + command->name + " failed: " + error.what(),
         };
     }
 }
@@ -96,7 +96,7 @@ void Application::refresh_menus(bool all) {
             it = unlocked_menus_.erase(it);
         } catch (const std::exception&) {
             // Keep the id and retry; authorization never depends on the edit succeeding.
-            std::cerr << "Nelze skrýt staré 2FA menu; opakuji později.\n";
+            std::cerr << "Cannot hide the old 2FA menu; retrying later.\n";
             ++it;
         }
     }
@@ -112,7 +112,7 @@ void Application::send_response(const CommandContext& context, const CommandResp
                 unlocked_menus_.erase(old);
             } catch (const std::exception&) {
                 // Still deliver the response, but do not create another unlocked menu.
-                std::cerr << "Staré 2FA menu se nepodařilo aktualizovat.\n";
+                std::cerr << "Failed to update the old 2FA menu.\n";
             }
         }
     }
@@ -133,14 +133,14 @@ void Application::handle_update(const nlohmann::json& update) {
             try {
                 telegram_.answer_callback_query(callback_id, text);
             } catch (const std::exception& error) {
-                std::cerr << "Upozornění: callback už nelze potvrdit: " << error.what()
+                std::cerr << "Warning: the callback can no longer be acknowledged: " << error.what()
                           << '\n';
             }
         };
 
         if (!is_authorized(user_id)) {
-            std::cerr << "Odmítnut Telegram user_id=" << user_id << '\n';
-            answer_callback("Přístup zamítnut");
+            std::cerr << "Rejected Telegram user_id=" << user_id << '\n';
+            answer_callback("Access denied");
             return;
         }
 
@@ -175,7 +175,7 @@ void Application::handle_update(const nlohmann::json& update) {
 
     const auto user_id = message.at("from").at("id").get<std::int64_t>();
     if (!is_authorized(user_id)) {
-        std::cerr << "Odmítnut Telegram user_id=" << user_id << '\n';
+        std::cerr << "Rejected Telegram user_id=" << user_id << '\n';
         return;
     }
 
@@ -194,7 +194,7 @@ void Application::run(const std::atomic_bool& stop_requested) {
     NotificationHttpServer http(config_.notifications().http,
         [&notifications](std::string message) { return notifications.try_enqueue(std::move(message)); });
 
-    std::cout << "Bot běží. Ukončení: Ctrl+C\n";
+    std::cout << "Bot is running. Press Ctrl+C to stop.\n";
 
     while (!stop_requested.load()) {
         try {
@@ -206,7 +206,7 @@ void Application::run(const std::atomic_bool& stop_requested) {
                 handle_update(update);
             }
         } catch (const std::exception& error) {
-            std::cerr << "Chyba: " << error.what() << "\nOpakuji za 3 sekundy.\n";
+            std::cerr << "Error: " << error.what() << "\nRetrying in 3 seconds.\n";
             for (int i = 0; i < 30 && !stop_requested.load(); ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
@@ -214,7 +214,7 @@ void Application::run(const std::atomic_bool& stop_requested) {
     }
 
     refresh_menus(true);
-    std::cout << "Bot byl ukončen.\n";
+    std::cout << "Bot stopped.\n";
 }
 
 }  // namespace tbot

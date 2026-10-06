@@ -26,16 +26,16 @@ void request_stop(int) {
 void print_help(std::string_view program) {
     std::cout
         << "tbot 0.1.0\n\n"
-        << "Použití:\n"
-        << "  " << program << " -c <soubor>\n"
+        << "Usage:\n"
+        << "  " << program << " -c <file>\n"
         << "  " << program << " -g <user_id> [-a]\n\n"
-        << "Volby:\n"
+        << "Options:\n"
         << "  -g, --generate-2fa-secret <user_id>\n"
-        << "                           Vygeneruje JSON, otpauth URI a QR kód\n"
-        << "  -a, --qr-ascii          Vykreslí QR bez ANSI barev a Unicode\n"
-        << "  -c, --config <soubor>  Cesta k JSON konfiguraci\n"
-        << "  -h, --help             Zobrazí tuto nápovědu\n\n"
-        << "Bez volby -c se aplikace nespustí a zobrazí pouze tuto nápovědu.\n";
+        << "                         Generate JSON, an otpauth URI and a QR code\n"
+        << "  -a, --qr-ascii          Render QR without ANSI colors or Unicode\n"
+        << "  -c, --config <file>     Path to the JSON configuration\n"
+        << "  -h, --help             Show this help\n\n"
+        << "Without -c, the application only shows this help and does not start.\n";
 }
 
 std::optional<std::int64_t> parse_user_id(std::string_view value) {
@@ -62,13 +62,13 @@ int main(int argc, char* argv[]) {
         }
         if (argument == "-g" || argument == "--generate-2fa-secret") {
             if (++i >= argc) {
-                std::cerr << "Chyba: za " << argument << " chybí Telegram user_id.\n\n";
+                std::cerr << "Error: missing Telegram user_id after " << argument << ".\n\n";
                 print_help(argv[0]);
                 return 2;
             }
             generate_for_user = parse_user_id(argv[i]);
             if (!generate_for_user) {
-                std::cerr << "Chyba: user_id musí být kladné celé číslo.\n";
+                std::cerr << "Error: user_id must be a positive integer.\n";
                 return 2;
             }
             continue;
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
         }
         if (argument == "-c" || argument == "--config") {
             if (++i >= argc) {
-                std::cerr << "Chyba: za " << argument << " chybí cesta k souboru.\n\n";
+                std::cerr << "Error: missing file path after " << argument << ".\n\n";
                 print_help(argv[0]);
                 return 2;
             }
@@ -87,19 +87,19 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        std::cerr << "Chyba: neznámá volba " << argument << "\n\n";
+        std::cerr << "Error: unknown option " << argument << "\n\n";
         print_help(argv[0]);
         return 2;
     }
 
     if (qr_ascii && !generate_for_user) {
-        std::cerr << "Volbu -a/--qr-ascii lze použít jen s "
+        std::cerr << "The -a/--qr-ascii option can only be used with "
                      "-g/--generate-2fa-secret.\n";
         return 2;
     }
     if (generate_for_user) {
         if (config_path) {
-            std::cerr << "Generování klíče nelze kombinovat s --config.\n";
+            std::cerr << "Secret generation cannot be combined with --config.\n";
             return 2;
         }
         try {
@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
                 {"user_id", *generate_for_user},
                 {"secret", secret},
             };
-            std::cout << "Položka do telegram.two_factor_users:\n"
+            std::cout << "Entry for telegram.two_factor_users:\n"
                       << user.dump(2) << "\n\notpauth URI:\n" << uri << "\n\n"
                       << qr.render_terminal(!qr_ascii && isatty(STDOUT_FILENO));
             return 0;
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
         tbot::Application application(std::move(config), std::move(commands));
         application.run(stop_requested);
     } catch (const std::exception& error) {
-        std::cerr << "Chyba: " << error.what() << '\n';
+        std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
 

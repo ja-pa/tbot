@@ -32,10 +32,10 @@ class Lock {
     int fd_;
 public:
     explicit Lock(const fs::path& path) : fd_(open(path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600)) {
-        if (fd_ < 0) fail("Nelze uzamknout konfiguraci");
+        if (fd_ < 0) fail("Cannot lock configuration");
         if (flock(fd_, LOCK_EX | LOCK_NB) != 0) {
             close(fd_);
-            fail("Konfiguraci právě ukládá jiný požadavek; zkuste to znovu");
+            fail("Another request is saving the configuration; try again");
         }
     }
     ~Lock() { close(fd_); }
@@ -43,51 +43,51 @@ public:
 
 std::string read(const fs::path& path) {
     if (!fs::is_regular_file(path) || fs::is_symlink(fs::symlink_status(path)))
-        fail("Konfigurace musí být běžný soubor, nikoli symbolický odkaz");
+        fail("Configuration must be a regular file, not a symbolic link");
     std::ifstream input(path, std::ios::binary);
-    if (!input) fail("Konfiguraci nelze přečíst");
+    if (!input) fail("Cannot read configuration");
     std::string value;
     char buffer[4096];
     while (input.read(buffer, sizeof buffer) || input.gcount()) {
         value.append(buffer, static_cast<std::size_t>(input.gcount()));
-        if (value.size() > limit) fail("Konfigurace překračuje 256 KiB");
+        if (value.size() > limit) fail("Configuration exceeds 256 KiB");
     }
-    if (input.bad()) fail("Čtení konfigurace selhalo");
+    if (input.bad()) fail("Failed to read configuration");
     return value;
 }
 
 void sync_directory(const fs::path& path) {
     const int fd = open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (fd < 0) fail("Nelze otevřít adresář konfigurace");
+    if (fd < 0) fail("Cannot open configuration directory");
     const int result = fsync(fd);
     close(fd);
-    if (result != 0) fail("Synchronizace adresáře konfigurace selhala");
+    if (result != 0) fail("Failed to synchronize configuration directory");
 }
 
 void write_atomic(const fs::path& path, const std::string& value, const Json& metadata = nullptr) {
-    if (value.size() > journal_limit) fail("Ukládaná data jsou příliš velká");
+    if (value.size() > journal_limit) fail("Data to save is too large");
     std::string temporary = path.string() + ".XXXXXX";
     const int fd = mkstemp(temporary.data());
-    if (fd < 0) fail("Nelze vytvořit dočasný soubor konfigurace");
+    if (fd < 0) fail("Cannot create temporary configuration file");
     bool closed = false;
     try {
-        if (fchmod(fd, 0600) != 0) fail("Nelze nastavit práva konfigurace");
+        if (fchmod(fd, 0600) != 0) fail("Cannot set configuration permissions");
         std::size_t offset = 0;
         while (offset < value.size()) {
             const auto count = ::write(fd, value.data() + offset, value.size() - offset);
             if (count < 0 && errno == EINTR) continue;
-            if (count <= 0) fail("Zápis konfigurace selhal");
+            if (count <= 0) fail("Failed to write configuration");
             offset += static_cast<std::size_t>(count);
         }
         if (!metadata.is_null()) {
             if (fchown(fd, metadata.at("uid").get<uid_t>(), metadata.at("gid").get<gid_t>()) != 0 ||
                 fchmod(fd, metadata.at("mode").get<mode_t>()) != 0)
-                fail("Nelze zachovat vlastníka a oprávnění skriptu");
+                fail("Cannot preserve script ownership and permissions");
         }
-        if (fsync(fd) != 0) fail("Synchronizace konfigurace selhala");
+        if (fsync(fd) != 0) fail("Failed to synchronize configuration");
         const int result = close(fd);
         closed = true;
-        if (result != 0) fail("Uzavření konfigurace selhalo");
+        if (result != 0) fail("Failed to close configuration file");
         fs::rename(temporary, path);
         sync_directory(path.parent_path());
     } catch (...) {
@@ -99,7 +99,7 @@ void write_atomic(const fs::path& path, const std::string& value, const Json& me
 
 Json parse(const std::string& text) {
     auto result = Json::parse(text, nullptr, false);
-    if (result.is_discarded() || !result.is_object()) fail("Neplatný JSON konfigurace; opravte soubor přes SSH");
+    if (result.is_discarded() || !result.is_object()) fail("Invalid configuration JSON; fix the file over SSH");
     return result;
 }
 
@@ -109,7 +109,7 @@ fs::path commands_path(const fs::path& config, const Json& document) {
     path = fs::absolute(path).lexically_normal();
     if (path == config || path == config.string() + ".luci-lock" ||
         path == config.string() + ".luci-pending" || path == config.string() + ".luci-backup")
-        fail("commands_file koliduje s hlavní konfigurací nebo administračními soubory");
+        fail("commands_file conflicts with the main configuration or administration files");
     return path;
 }
 
@@ -137,20 +137,20 @@ fs::path editable_path(const fs::path& config, fs::path path) {
     path = fs::absolute(path).lexically_normal();
     const auto relative = path.lexically_relative(root);
     if (relative.empty() || relative == "." || relative.is_absolute() || *relative.begin() == "..")
-        fail("Editor podporuje jen existující skripty v /etc/tbot-wrt/scripts");
+        fail("The editor only supports existing scripts in /etc/tbot-wrt/scripts");
     fs::path current;
     for (const auto& part : path) {
         current /= part;
-        if (fs::is_symlink(fs::symlink_status(current))) fail("Editor nepovoluje symbolické odkazy");
+        if (fs::is_symlink(fs::symlink_status(current))) fail("The editor does not allow symbolic links");
     }
-    if (!fs::is_regular_file(path)) fail("Skript není existující běžný soubor");
+    if (!fs::is_regular_file(path)) fail("Script is not an existing regular file");
     return path;
 }
 
 Json script_metadata(const fs::path& path) {
     struct stat info{};
     if (lstat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) || !(info.st_mode & 0111))
-        fail("Skript musí být běžný spustitelný soubor");
+        fail("Script must be a regular executable file");
     return {{"mode", info.st_mode & 07777}, {"uid", info.st_uid}, {"gid", info.st_gid}};
 }
 
@@ -159,20 +159,20 @@ void shell_text(const std::string& content) {
     if (!header.empty() && header.back() == '\r') header.pop_back();
     if (content.size() > script_limit || content.find('\0') != std::string::npos ||
         (header != "#!/bin/sh" && header != "#!/bin/ash"))
-        fail("Editor vyžaduje textový skript s #!/bin/sh nebo #!/bin/ash, nejvýše 64 KiB");
+        fail("The editor requires a text script starting with #!/bin/sh or #!/bin/ash, at most 64 KiB");
 }
 
 void check_shell_syntax(const std::string& content) {
     shell_text(content);
     char name[] = "/tmp/tbot-script-check-XXXXXX";
     const int fd = mkstemp(name);
-    if (fd < 0) fail("Nelze připravit kontrolu syntaxe skriptu");
+    if (fd < 0) fail("Cannot prepare script syntax check");
     unlink(name); // Anonymous, private input; never an executable script path.
     std::size_t offset = 0;
     while (offset < content.size()) {
         const auto n = ::write(fd, content.data() + offset, content.size() - offset);
         if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) { close(fd); fail("Nelze připravit kontrolu syntaxe skriptu"); }
+        if (n <= 0) { close(fd); fail("Cannot prepare script syntax check"); }
         offset += static_cast<std::size_t>(n);
     }
     lseek(fd, 0, SEEK_SET);
@@ -185,41 +185,41 @@ void check_shell_syntax(const std::string& content) {
         _exit(127);
     }
     close(fd);
-    if (child < 0) fail("Nelze spustit kontrolu syntaxe");
+    if (child < 0) fail("Cannot start syntax check");
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     int status = 0;
     for (;;) {
         const auto done = waitpid(child, &status, WNOHANG);
         if (done == child) break;
-        if (done < 0 && errno != EINTR) fail("Kontrola syntaxe selhala");
+        if (done < 0 && errno != EINTR) fail("Syntax check failed");
         if (std::chrono::steady_clock::now() >= deadline) {
             kill(child, SIGKILL);
             while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
-            fail("Kontrola syntaxe překročila časový limit");
+            fail("Syntax check timed out");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        fail("Skript má chybnou shellovou syntaxi; nic nebylo uloženo");
+        fail("Script has invalid shell syntax; nothing was saved");
 }
 
 std::int64_t id(const Json& value, bool positive) {
-    if (!value.is_string()) fail("Telegram ID musí být desetinný řetězec");
+    if (!value.is_string()) fail("Telegram ID must be a decimal string");
     const auto text = value.get<std::string>();
     std::int64_t number;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), number);
     if (error != std::errc{} || end != text.data() + text.size() || number == 0 ||
-        (positive && number < 0)) fail("Neplatné Telegram ID");
+        (positive && number < 0)) fail("Invalid Telegram ID");
     return number;
 }
 
 Json ids(const Json& values, bool positive) {
-    if (!values.is_array()) fail("Seznam ID musí být pole");
+    if (!values.is_array()) fail("ID list must be an array");
     Json result = Json::array();
     std::set<std::int64_t> seen;
     for (const auto& value : values) {
         const auto number = id(value, positive);
-        if (!seen.insert(number).second) fail("Duplicitní Telegram ID");
+        if (!seen.insert(number).second) fail("Duplicate Telegram ID");
         result.push_back(number);
     }
     return result;
@@ -240,7 +240,7 @@ void recover(const fs::path& config) {
     char c;
     while (input.get(c)) {
         text += c;
-        if (text.size() > journal_limit) fail("Poškozený transakční záznam");
+        if (text.size() > journal_limit) fail("Corrupted transaction journal");
     }
     const auto journal = parse(text);
     const auto before = journal.at("config_before").get<std::string>();
@@ -250,7 +250,7 @@ void recover(const fs::path& config) {
     if ((current_config != before && current_config != journal.at("config_after").get<std::string>()) ||
         (current_commands != journal.at("commands_before").get<std::string>() &&
          current_commands != journal.at("commands_after").get<std::string>()))
-        fail("Nedokončené ukládání a souběžná změna přes SSH; obnovte zálohu ručně");
+        fail("Incomplete save and concurrent change over SSH; restore the backup manually");
     const auto scripts = journal.value("scripts", Json::array());
     // Validate the entire recovery set before restoring any member.
     for (const auto& script : scripts) {
@@ -258,7 +258,7 @@ void recover(const fs::path& config) {
         const auto content = read(path);
         if ((content != script.at("before").get<std::string>() && content != script.at("after").get<std::string>()) ||
             script_metadata(path) != script.at("metadata"))
-            fail("Nedokončené ukládání a souběžná změna skriptu; obnovte zálohu ručně");
+            fail("Incomplete save and concurrent script change; restore the backup manually");
     }
     for (const auto& script : scripts)
         write_atomic(script.at("path").get<std::string>(), script.at("before").get<std::string>(), script.at("metadata"));
@@ -289,7 +289,7 @@ fs::path command_script(const fs::path& config, const Snapshot& snapshot, const 
         if (path.is_relative()) path = snapshot.target.parent_path() / path;
         return editable_path(config, path);
     }
-    fail("Uložený příkaz neexistuje; nejprve uložte konfiguraci");
+    fail("Saved command does not exist; save the configuration first");
 }
 
 Json public_view(const Snapshot& snapshot) {
@@ -339,7 +339,7 @@ Json AdminConfig::load() {
     auto result = public_view(snapshot);
     try { (void)tbot::TbotConfig::from_json(config_, snapshot.config, snapshot.commands); }
     catch (const std::exception&) {
-        result["validation_warning"] = "Konfigurace zatím není platná. Před spuštěním doplňte údaje a uložte ji.";
+        result["validation_warning"] = "Configuration is not valid yet. Complete and save it before starting.";
     }
     return result;
 }
@@ -348,7 +348,7 @@ Json AdminConfig::script(const std::string& command, const std::string& config_r
     Lock lock(config_.string() + ".luci-lock");
     recover(config_);
     const Snapshot snapshot(config_);
-    if (snapshot.version() != config_revision) fail("Konfigurace se mezitím změnila. Znovu načtěte stránku.");
+    if (snapshot.version() != config_revision) fail("Configuration has changed. Reload the page.");
     const auto path = command_script(config_, snapshot, command);
     const auto content = read(path);
     shell_text(content);
@@ -361,14 +361,14 @@ Json AdminConfig::test_script(const std::string& command, const std::string& con
     Lock lock(config_.string() + ".luci-lock");
     recover(config_);
     const Snapshot snapshot(config_);
-    if (snapshot.version() != config_revision) fail("Konfigurace se mezitím změnila. Znovu načtěte stránku.");
+    if (snapshot.version() != config_revision) fail("Configuration has changed. Reload the page.");
     const auto path = command_script(config_, snapshot, command);
     shell_text(read(path));
     (void)script_metadata(path);
     int output_pipe[2];
-    if (pipe2(output_pipe, O_CLOEXEC) != 0) fail("Nelze vytvořit kanál pro výstup skriptu");
+    if (pipe2(output_pipe, O_CLOEXEC) != 0) fail("Cannot create pipe for script output");
     const auto child = fork();
-    if (child < 0) { close(output_pipe[0]); close(output_pipe[1]); fail("Nelze spustit skript"); }
+    if (child < 0) { close(output_pipe[0]); close(output_pipe[1]); fail("Cannot start script"); }
     if (child == 0) {
         setpgid(0, 0);
         dup2(output_pipe[1], STDOUT_FILENO);
@@ -403,7 +403,7 @@ Json AdminConfig::test_script(const std::string& command, const std::string& con
         const auto waited = waitpid(child, &status, WNOHANG);
         if (waited == child) break;
         if (waited < 0 && errno != EINTR) {
-            kill(-child, SIGKILL); close(output_pipe[0]); fail("Čekání na skript selhalo");
+            kill(-child, SIGKILL); close(output_pipe[0]); fail("Failed to wait for script");
         }
         if (std::chrono::steady_clock::now() >= deadline) {
             timed_out = true;
@@ -424,13 +424,13 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
     Lock lock(config_.string() + ".luci-lock");
     recover(config_);
     const Snapshot snapshot(config_);
-    if (request.at("revision") != snapshot.version()) fail("Konfigurace se mezitím změnila. Znovu načtěte stránku.");
+    if (request.at("revision") != snapshot.version()) fail("Configuration has changed. Reload the page.");
     auto config = snapshot.config;
     auto commands = snapshot.commands;
     auto& telegram = config["telegram"];
     const auto token_action = request.at("token_action").get<std::string>();
     if (token_action == "replace") telegram["token"] = request.at("token").get<std::string>();
-    else if (token_action != "keep") fail("Neplatná operace s tokenem");
+    else if (token_action != "keep") fail("Invalid token operation");
     telegram["allowed_user_ids"] = ids(request.at("allowed_user_ids"), true);
     telegram["poll_timeout_seconds"] = request.at("poll_timeout_seconds");
     config["notifications"]["chat_ids"] = ids(request.at("chat_ids"), false);
@@ -443,10 +443,10 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
             target[key] = source.at(key);
         const auto action = source.at("password_action").get<std::string>();
         if (action == "replace") target["password"] = source.at("password").get<std::string>();
-        else if (action != "keep") fail("Neplatná operace s HTTP heslem");
+        else if (action != "keep") fail("Invalid HTTP password operation");
     }
     if (!request.at("two_factor_users").is_array() || !request.at("commands").is_array())
-        fail("Uživatelé a příkazy musí být pole");
+        fail("Users and commands must be arrays");
     Json users = Json::array();
     for (const auto& item : request.at("two_factor_users")) {
         const auto number = id(item.at("user_id"), true);
@@ -455,7 +455,7 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
             if (old.at("user_id") == number) user = old;
         const auto action = item.at("secret_action").get<std::string>();
         if (action == "replace") user["secret"] = item.at("secret").get<std::string>();
-        else if (action != "keep" || !user.contains("secret")) fail("Chybí nový 2FA klíč");
+        else if (action != "keep" || !user.contains("secret")) fail("Missing new 2FA secret");
         users.push_back(user);
     }
     telegram["two_factor_users"] = users; // Omitted users are explicitly removed by the form.
@@ -465,11 +465,11 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
         Json command = Json::object();
         const auto original = item.value("original_name", std::string());
         if (!original.empty()) {
-            if (!originals.insert(original).second) fail("Opakovaný původní příkaz");
+            if (!originals.insert(original).second) fail("Duplicate original command");
             bool found = false;
             for (const auto& old : snapshot.commands.at("commands"))
                 if (old.at("name") == original) { command = old; found = true; break; }
-            if (!found) fail("Původní příkaz neexistuje");
+            if (!found) fail("Original command does not exist");
         }
         for (const auto* key : {"name", "description", "script"}) command[key] = item.at(key).get<std::string>();
         command["requires_2fa"] = item.at("requires_2fa").get<bool>();
@@ -485,9 +485,9 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
     (void)tbot::TbotConfig::from_json(config_, config, commands);
     const auto next_config = config.dump(2) + "\n";
     const auto next_commands = commands.dump(2) + "\n";
-    if (next_config.size() > limit || next_commands.size() > limit) fail("Konfigurace překračuje 256 KiB");
+    if (next_config.size() > limit || next_commands.size() > limit) fail("Configuration exceeds 256 KiB");
     const auto edits = request.value("scripts", Json::array());
-    if (!edits.is_array() || edits.size() > 32) fail("Neplatný seznam změněných skriptů");
+    if (!edits.is_array() || edits.size() > 32) fail("Invalid list of modified scripts");
     Json script_changes = Json::array();
     std::set<fs::path> script_paths;
     std::size_t total_size = 0;
@@ -501,24 +501,24 @@ Json AdminConfig::save(const Json& request, const std::function<void()>& after_f
             if (candidate.is_relative()) candidate = snapshot.target.parent_path() / candidate;
             still_assigned = candidate.lexically_normal() == path;
         }
-        if (!still_assigned) fail("U upraveného skriptu byl odstraněn příkaz nebo změněna cesta");
-        if (!script_paths.insert(path).second) fail("Tentýž skript lze v požadavku upravit jen jednou");
+        if (!still_assigned) fail("A modified script had its command removed or its path changed");
+        if (!script_paths.insert(path).second) fail("A script can only be modified once per request");
         const auto before = read(path);
         shell_text(before);
         const auto metadata = script_metadata(path);
-        if (edit.at("revision") != revision(before, path, metadata.dump())) fail("Skript se mezitím změnil; načtěte ho znovu");
+        if (edit.at("revision") != revision(before, path, metadata.dump())) fail("Script has changed; reload it");
         const auto after = edit.at("content").get<std::string>();
         total_size += after.size();
-        if (total_size > 128 * 1024) fail("Změněné skripty překračují celkem 128 KiB");
+        if (total_size > 128 * 1024) fail("Modified scripts exceed 128 KiB in total");
         check_shell_syntax(after);
         script_changes.push_back({{"path", path.string()}, {"before", before}, {"after", after}, {"metadata", metadata}});
     }
     // Recheck immediately before writing, including changes made outside our lock (SSH).
-    if (Snapshot(config_).version() != snapshot.version()) fail("Konfigurace se během ukládání změnila");
+    if (Snapshot(config_).version() != snapshot.version()) fail("Configuration changed while saving");
     for (const auto& change : script_changes) {
         const auto path = editable_path(config_, change.at("path").get<std::string>());
         if (read(path) != change.at("before").get<std::string>() || script_metadata(path) != change.at("metadata"))
-            fail("Skript se během ukládání změnil");
+            fail("Script changed while saving");
     }
     const Json journal = {{"config_before", snapshot.config_text}, {"commands_before", snapshot.commands_text},
                           {"config_after", next_config}, {"commands_after", next_commands}, {"scripts", script_changes}};

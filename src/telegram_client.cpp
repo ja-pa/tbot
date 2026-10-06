@@ -12,7 +12,7 @@ namespace {
 struct CurlGlobal {
     CurlGlobal() {
         if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
-            throw std::runtime_error("Inicializace libcurl selhala");
+            throw std::runtime_error("Failed to initialize libcurl");
         }
     }
     ~CurlGlobal() { curl_global_cleanup(); }
@@ -75,7 +75,7 @@ nlohmann::json TelegramClient::request(std::string_view method,
                                        int timeout_seconds) const {
     CurlHandle curl(curl_easy_init(), &curl_easy_cleanup);
     if (!curl) {
-        throw std::runtime_error("Vytvoření HTTP klienta selhalo");
+        throw std::runtime_error("Failed to create HTTP client");
     }
 
     const std::string url = api_base_ + std::string(method);
@@ -97,7 +97,7 @@ nlohmann::json TelegramClient::request(std::string_view method,
 
     const CURLcode result = curl_easy_perform(curl.get());
     if (result != CURLE_OK) {
-        throw std::runtime_error("Telegram HTTP požadavek selhal: " +
+        throw std::runtime_error("Telegram HTTP request failed: " +
                                  std::string(curl_easy_strerror(result)));
     }
 
@@ -108,13 +108,13 @@ nlohmann::json TelegramClient::request(std::string_view method,
     try {
         response = nlohmann::json::parse(response_body);
     } catch (const nlohmann::json::exception&) {
-        throw std::runtime_error("Telegram vrátil neplatnou odpověď (HTTP " +
+        throw std::runtime_error("Telegram returned an invalid response (HTTP " +
                                  std::to_string(http_status) + ")");
     }
 
     if (http_status < 200 || http_status >= 300 || !response.value("ok", false)) {
-        const std::string description = response.value("description", "neznámá chyba");
-        throw std::runtime_error("Telegram API odmítlo požadavek: " + description);
+        const std::string description = response.value("description", "unknown error");
+        throw std::runtime_error("Telegram API rejected the request: " + description);
     }
 
     return response.at("result");

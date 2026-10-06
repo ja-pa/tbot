@@ -11,7 +11,7 @@ constexpr int quiet_zone = 4;
 
 QrCode::QrCode(std::string_view text) {
     if (text.find('\0') != std::string_view::npos) {
-        throw std::invalid_argument("Text QR kódu obsahuje nulový znak");
+        throw std::invalid_argument("QR code text contains a null character");
     }
 
     std::array<std::uint8_t, buffer_size> temporary{};
@@ -19,7 +19,7 @@ QrCode::QrCode(std::string_view text) {
     if (!qrcodegen_encodeText(terminated.c_str(), temporary.data(), data_.data(),
                               qrcodegen_Ecc_MEDIUM, qrcodegen_VERSION_MIN,
                               maximum_version, qrcodegen_Mask_AUTO, true)) {
-        throw std::runtime_error("Text je příliš dlouhý pro terminálový QR kód");
+        throw std::runtime_error("Text is too long for a terminal QR code");
     }
     size_ = qrcodegen_getSize(data_.data());
 }

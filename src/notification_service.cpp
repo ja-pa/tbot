@@ -23,7 +23,7 @@ sockaddr_un make_socket_address(const std::filesystem::path& path) {
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
     if (text.size() >= sizeof(address.sun_path)) {
-        throw std::runtime_error("Cesta k notification socketu je příliš dlouhá: " + text);
+        throw std::runtime_error("Notification socket path is too long: " + text);
     }
     std::memcpy(address.sun_path, text.c_str(), text.size() + 1);
     return address;
@@ -77,7 +77,7 @@ NotificationService::NotificationService(std::string telegram_token,
       socket_path_(std::move(socket_path)) {
     socket_fd_ = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (socket_fd_ < 0) {
-        throw std::runtime_error("Vytvoření notification socketu selhalo: " +
+        throw std::runtime_error("Failed to create the notification socket: " +
                                  std::string(std::strerror(errno)));
     }
 
@@ -85,25 +85,25 @@ NotificationService::NotificationService(std::string telegram_token,
         struct stat existing{};
         if (lstat(socket_path_.c_str(), &existing) == 0) {
             if (!S_ISSOCK(existing.st_mode)) {
-                throw std::runtime_error("Cesta notification socketu už existuje a není socket: " +
+                throw std::runtime_error("Notification socket path already exists and is not a socket: " +
                                          socket_path_.string());
             }
             if (unlink(socket_path_.c_str()) != 0) {
-                throw std::runtime_error("Odstranění starého notification socketu selhalo: " +
+                throw std::runtime_error("Failed to remove the old notification socket: " +
                                          std::string(std::strerror(errno)));
             }
         } else if (errno != ENOENT) {
-            throw std::runtime_error("Kontrola notification socketu selhala: " +
+            throw std::runtime_error("Failed to inspect notification socket: " +
                                      std::string(std::strerror(errno)));
         }
 
         const auto address = make_socket_address(socket_path_);
         if (bind(socket_fd_, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
-            throw std::runtime_error("Připojení notification socketu selhalo: " +
+            throw std::runtime_error("Failed to bind the notification socket: " +
                                      std::string(std::strerror(errno)));
         }
         if (chmod(socket_path_.c_str(), S_IRUSR | S_IWUSR) != 0) {
-            throw std::runtime_error("Nastavení oprávnění notification socketu selhalo: " +
+            throw std::runtime_error("Failed to set notification socket permissions: " +
                                      std::string(std::strerror(errno)));
         }
 
@@ -124,7 +124,7 @@ NotificationService::NotificationService(std::string telegram_token,
         throw;
     }
 
-    std::cout << "Lokální notifikace poslouchají na " << socket_path_ << '\n';
+    std::cout << "Listening for local notifications on " << socket_path_ << '\n';
 }
 
 NotificationService::~NotificationService() {
@@ -151,7 +151,7 @@ void NotificationService::receive_loop() {
             if (errno == EINTR) {
                 continue;
             }
-            std::cerr << "Čekání na lokální notifikaci selhalo: " << std::strerror(errno) << '\n';
+            std::cerr << "Failed to wait for a local notification: " << std::strerror(errno) << '\n';
             break;
         }
         if (ready == 0) {
@@ -164,12 +164,12 @@ void NotificationService::receive_loop() {
                 continue;
             }
             if (!stopping_.load()) {
-                std::cerr << "Příjem lokální notifikace selhal: " << std::strerror(errno) << '\n';
+                std::cerr << "Failed to receive a local notification: " << std::strerror(errno) << '\n';
             }
             break;
         }
         if (received == 0 || static_cast<std::size_t>(received) > maximum_notification_bytes) {
-            std::cerr << "Lokální notifikace byla prázdná nebo příliš dlouhá; zahazuji ji.\n";
+            std::cerr << "Local notification was empty or too long; discarding it.\n";
             continue;
         }
 
@@ -179,7 +179,7 @@ void NotificationService::receive_loop() {
             discarded = queue_.push(std::string(buffer.data(), static_cast<std::size_t>(received)));
         }
         if (discarded) {
-            std::cerr << "Fronta lokálních notifikací je plná; nejstarší zpráva byla zahozena.\n";
+            std::cerr << "Local notification queue is full; the oldest message was discarded.\n";
         }
         queue_changed_.notify_one();
     }
@@ -211,12 +211,12 @@ void NotificationService::send_loop() {
                 telegram_.send_message(chat_id, message);
                 ++delivered;
             } catch (const std::exception& error) {
-                std::cerr << "Odeslání lokální notifikace do chat_id=" << chat_id
-                          << " selhalo: " << error.what() << '\n';
+                std::cerr << "Sending local notification to chat_id=" << chat_id
+                          << " failed: " << error.what() << '\n';
             }
         }
         if (delivered != 0)
-            std::cout << "Notifikace odeslána do Telegramu: " << delivered << " chatů." << std::endl;
+            std::cout << "Notification sent to Telegram: " << delivered << " chats." << std::endl;
         next_send = std::chrono::steady_clock::now() + send_interval;
     }
 }

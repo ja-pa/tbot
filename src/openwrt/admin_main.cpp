@@ -16,9 +16,9 @@ struct Result { int code; std::string output; };
 // Fixed executable/argument lists only. No shell evaluation of request data.
 Result run(const char* executable, std::initializer_list<const char*> arguments) {
     int pipefd[2];
-    if (pipe2(pipefd, O_CLOEXEC) != 0) throw std::runtime_error("Nelze vytvořit komunikační kanál");
+    if (pipe2(pipefd, O_CLOEXEC) != 0) throw std::runtime_error("Cannot create communication pipe");
     const auto child = fork();
-    if (child < 0) { close(pipefd[0]); close(pipefd[1]); throw std::runtime_error("Nelze spustit správu služby"); }
+    if (child < 0) { close(pipefd[0]); close(pipefd[1]); throw std::runtime_error("Cannot start service management"); }
     if (child == 0) {
         setpgid(0, 0);
         dup2(pipefd[1], STDOUT_FILENO);
@@ -48,12 +48,12 @@ Result run(const char* executable, std::initializer_list<const char*> arguments)
         }
         const auto result = waitpid(child, &status, WNOHANG);
         if (result == child) done = true;
-        else if (result < 0 && errno != EINTR) { close(pipefd[0]); throw std::runtime_error("Čekání na službu selhalo"); }
+        else if (result < 0 && errno != EINTR) { close(pipefd[0]); throw std::runtime_error("Failed to wait for service"); }
         else if (std::chrono::steady_clock::now() >= deadline) {
             kill(-child, SIGKILL);
             while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
             close(pipefd[0]);
-            throw std::runtime_error("Správa služby překročila časový limit");
+            throw std::runtime_error("Service management timed out");
         } else {
             pollfd descriptor{pipefd[0], POLLIN, 0};
             poll(&descriptor, 1, 20);
@@ -70,7 +70,7 @@ Result run(const char* executable, std::initializer_list<const char*> arguments)
 
 Json status() {
     const auto result = run("/bin/ubus", {"call", "service", "list", "{\"name\":\"tbot-wrt\"}"});
-    if (result.code != 0) throw std::runtime_error("Stav služby nelze zjistit přes ubus");
+    if (result.code != 0) throw std::runtime_error("Cannot determine service status through ubus");
     const auto services = Json::parse(result.output);
     bool running = false;
     Json pid = nullptr;
@@ -80,24 +80,24 @@ Json status() {
             if (instance.value("running", false) && instance.contains("pid")) pid = instance.at("pid");
         }
     const auto enabled = run("/etc/init.d/tbot-wrt", {"enabled"});
-    if (enabled.code != 0 && enabled.code != 1) throw std::runtime_error("Nelze zjistit automatický start služby");
+    if (enabled.code != 0 && enabled.code != 1) throw std::runtime_error("Cannot determine service autostart status");
     return {{"running", running}, {"enabled", enabled.code == 0}, {"pid", pid}};
 }
 
 Json service(const std::string& action) {
     if (action != "start" && action != "stop" && action != "restart" && action != "enable" && action != "disable")
-        throw std::runtime_error("Nepovolená akce služby");
+        throw std::runtime_error("Service action not allowed");
     const auto result = run("/etc/init.d/tbot-wrt", {action.c_str()});
-    if (result.code != 0) throw std::runtime_error("Akce služby selhala; zkontrolujte systémový log");
+    if (result.code != 0) throw std::runtime_error("Service action failed; check the system log");
     if (action == "start" || action == "restart") std::this_thread::sleep_for(std::chrono::seconds(1));
     auto state = status();
     if ((action == "start" || action == "restart") && !state.at("running").get<bool>())
-        throw std::runtime_error("Služba po spuštění neběží; zkontrolujte konfiguraci a systémový log");
+        throw std::runtime_error("Service is not running after startup; check the configuration and system log");
     if (action == "stop" && state.at("running").get<bool>())
-        throw std::runtime_error("Služba se nezastavila");
+        throw std::runtime_error("Service did not stop");
     if ((action == "enable" && !state.at("enabled").get<bool>()) ||
         (action == "disable" && state.at("enabled").get<bool>()))
-        throw std::runtime_error("Nastavení automatického startu se nezměnilo");
+        throw std::runtime_error("Autostart setting did not change");
     return state;
 }
 }
@@ -105,11 +105,11 @@ Json service(const std::string& action) {
 int main(int argc, char** argv) {
     // RPC always uses the fixed router path; test code uses AdminConfig directly.
     try {
-        if (argc != 2) throw std::runtime_error("Očekávána jedna RPC metoda");
+        if (argc != 2) throw std::runtime_error("Expected one RPC method");
         std::string text;
         char c;
         while (std::cin.get(c)) {
-            if (text.size() >= 1024 * 1024) throw std::runtime_error("Požadavek je příliš velký");
+            if (text.size() >= 1024 * 1024) throw std::runtime_error("Request is too large");
             text += c;
         }
         const auto request = Json::parse(text.empty() ? "{}" : text);
@@ -130,10 +130,10 @@ int main(int argc, char** argv) {
         } else if (method == "generate") result = tbot_wrt::AdminConfig::generate(request.at("user_id").get<std::string>());
         else if (method == "status") result = status();
         else if (method == "service") result = service(request.at("action").get<std::string>());
-        else throw std::runtime_error("Neznámá RPC metoda");
+        else throw std::runtime_error("Unknown RPC method");
         std::cout << Json({{"ok", true}, {"data", result}}).dump(-1, ' ', false, Json::error_handler_t::replace) << '\n';
     } catch (const nlohmann::json::exception&) {
-        std::cout << Json({{"ok", false}, {"error", "Chybí nebo má chybný typ položka požadavku či konfigurace"}}).dump() << '\n';
+        std::cout << Json({{"ok", false}, {"error", "Missing or incorrectly typed request or configuration field"}}).dump() << '\n';
         return 1;
     } catch (const std::exception& error) {
         std::cout << Json({{"ok", false}, {"error", error.what()}}).dump() << '\n';

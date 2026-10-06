@@ -40,7 +40,7 @@ int main() {
         std::ofstream script(test_script);
         script << "#!/bin/sh\n"
                   "test \"$#\" -eq 0\n"
-                  "printf 'výstup testovacího skriptu\\n'\n";
+                  "printf 'test script output\\n'\n";
     }
     make_executable(test_script);
 
@@ -48,7 +48,7 @@ int main() {
     {
         std::ofstream script(failing_script);
         script << "#!/bin/sh\n"
-                  "printf 'testovací chyba\\n' >&2\n"
+                  "printf 'test error\\n' >&2\n"
                   "exit 7\n";
     }
     make_executable(failing_script);
@@ -72,15 +72,15 @@ int main() {
             "commands": [
                 {
                     "name": "status",
-                    "description": "Testovací stav",
-                    "button": {"text": "📊 Stav", "row": 0},
+                    "description": "Test status",
+                    "button": {"text": "📊 Status", "row": 0},
                     "script": "scripts/test.sh"
                 },
                 {
                     "name": "home",
                     "enabled": true,
-                    "description": "Testovací přítomnost",
-                    "button": {"text": "🏠 Kdo je doma", "row": 1},
+                    "description": "Test presence",
+                    "button": {"text": "🏠 Who is home", "row": 1},
                     "script": "scripts/test.sh"
                 }
             ]
@@ -143,7 +143,7 @@ int main() {
     assert(config.notifications().socket_path == "/tmp/tbot-test.sock");
     assert(config.commands().items().at(0).script ==
            std::filesystem::weakly_canonical(test_script));
-    assert(tbot::run_script(test_script) == "výstup testovacího skriptu");
+    assert(tbot::run_script(test_script) == "test script output");
 
     const auto missing_notifications_path = temp / "config-without-notifications.json";
     {
@@ -181,14 +181,14 @@ int main() {
         tbot::run_script(failing_script);
     } catch (const std::runtime_error& error) {
         const std::string message = error.what();
-        failure_reported = message.find("kódem 7") != std::string::npos &&
-                           message.find("testovací chyba") != std::string::npos;
+        failure_reported = message.find("code 7") != std::string::npos &&
+                           message.find("test error") != std::string::npos;
     }
     assert(failure_reported);
 
     const auto long_output = tbot::run_script(long_output_script);
     assert(long_output.starts_with(std::string(3800, 'x')));
-    assert(long_output.ends_with("… (výstup byl zkrácen)"));
+    assert(long_output.ends_with("… (output truncated)"));
 
     tbot::CommandRegistry commands;
     tbot::register_builtin_commands(commands);
@@ -196,7 +196,7 @@ int main() {
 
     commands.add({
         .name = "test",
-        .description = "Testovací C++ příkaz",
+        .description = "Test C++ command",
         .handler = [](const tbot::CommandContext& context) {
             return tbot::CommandResponse{
                 .text = "user=" + std::to_string(context.user_id),
@@ -263,11 +263,11 @@ int main() {
     tbot::Application app(std::move(config), std::move(commands));
     assert(app.is_authorized(42));
     assert(!app.is_authorized(43));
-    assert(app.execute("📊 Stav", {.user_id = 42, .chat_id = 42, .private_chat = true}).text == "výstup testovacího skriptu");
+    assert(app.execute("📊 Status", {.user_id = 42, .chat_id = 42, .private_chat = true}).text == "test script output");
     assert(app.execute("/version", {.user_id = 42, .chat_id = 42, .private_chat = true}).text == "tbot 0.1.0");
-    assert(app.execute("/help", {.user_id = 42, .chat_id = 42, .private_chat = true}).text.find("Vyber jednu z možností") != std::string::npos);
+    assert(app.execute("/help", {.user_id = 42, .chat_id = 42, .private_chat = true}).text.find("Choose an option") != std::string::npos);
     assert(app.execute("/help", {.user_id = 42, .chat_id = 42, .private_chat = true}).show_menu);
-    assert(app.execute("/start", {.user_id = 42, .chat_id = 42, .private_chat = true}).text.find("Vítej") != std::string::npos);
+    assert(app.execute("/start", {.user_id = 42, .chat_id = 42, .private_chat = true}).text.find("Welcome") != std::string::npos);
     assert(app.execute("/test", {.user_id = 42, .chat_id = 100}).text == "user=42");
 
     const auto unknown = app.execute("/unknown", {.user_id = 42, .chat_id = 42, .private_chat = true}).text;
@@ -277,6 +277,6 @@ int main() {
     assert(app.execute("/disabled", {.user_id = 42, .chat_id = -100}).text == unknown);
     assert(disabled_calls == 0);
     std::filesystem::remove_all(temp);
-    std::cout << "Všechny testy prošly.\n";
+    std::cout << "All tests passed.\n";
     return 0;
 }

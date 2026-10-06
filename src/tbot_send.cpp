@@ -50,16 +50,16 @@ private:
 };
 
 void print_help(std::string_view program) {
-    std::cout << "Odešle lokální notifikaci OpenWrt Telegram botovi.\n\n"
-              << "Použití:\n"
-              << "  " << program << " [--socket <cesta>] <zpráva>\n"
-              << "  printf '%s\\n' 'zpráva' | " << program << " [--socket <cesta>]\n\n"
-              << "Zpráva se pouze předá lokálnímu daemonu; na doručení do Telegramu se nečeká.\n";
+    std::cout << "Send a local notification to the OpenWrt Telegram bot.\n\n"
+              << "Usage:\n"
+              << "  " << program << " [--socket <path>] <message>\n"
+              << "  printf '%s\\n' 'message' | " << program << " [--socket <path>]\n\n"
+              << "The message is passed to the local daemon without waiting for Telegram delivery.\n";
 }
 
 void print_message_too_long_error() {
-    std::cerr << "Chyba: zpráva smí mít nejvýše "
-              << tbot::maximum_notification_bytes << " bajtů.\n";
+    std::cerr << "Error: message must not exceed "
+              << tbot::maximum_notification_bytes << " bytes.\n";
 }
 
 bool append_message_part(std::string& message, std::string_view part) {
@@ -90,14 +90,14 @@ ParseResult parse_arguments(int argc, char* argv[], CliOptions& options) {
         }
         if (options_enabled && argument == "--socket") {
             if (++i >= argc) {
-                std::cerr << "Chyba: za --socket chybí cesta.\n";
+                std::cerr << "Error: missing path after --socket.\n";
                 return ParseResult::error;
             }
             options.socket_path = argv[i];
             continue;
         }
         if (options_enabled && argument.starts_with('-')) {
-            std::cerr << "Chyba: neznámá volba " << argument << '\n';
+            std::cerr << "Error: unknown option " << argument << '\n';
             return ParseResult::error;
         }
         if (!append_message_part(options.message, argument)) {
@@ -131,14 +131,14 @@ bool obtain_message(std::string& message) {
         return true;
     }
     if (isatty(STDIN_FILENO)) {
-        std::cerr << "Chyba: chybí zpráva. Zadej ji jako argument nebo přes standardní vstup.\n";
+        std::cerr << "Error: missing message. Provide it as an argument or through standard input.\n";
         return false;
     }
     if (!read_message_from_stdin(message)) {
         return false;
     }
     if (message.empty()) {
-        std::cerr << "Chyba: zpráva nesmí být prázdná.\n";
+        std::cerr << "Error: message must not be empty.\n";
         return false;
     }
     return true;
@@ -184,18 +184,18 @@ int report_send_result(const UnixNotificationSender::Result& result) {
         case Status::success:
             return 0;
         case Status::invalid_socket_path:
-            std::cerr << "Chyba: cesta k socketu je prázdná nebo příliš dlouhá.\n";
+            std::cerr << "Error: socket path is empty or too long.\n";
             return 2;
         case Status::socket_creation_failed:
-            std::cerr << "Chyba: vytvoření socketu selhalo: "
+            std::cerr << "Error: failed to create socket: "
                       << std::strerror(result.system_error) << '\n';
             return 1;
         case Status::send_failed:
-            std::cerr << "Chyba: předání zprávy daemonu selhalo: "
+            std::cerr << "Error: failed to pass message to daemon: "
                       << std::strerror(result.system_error) << '\n';
             return 1;
         case Status::incomplete_send:
-            std::cerr << "Chyba: daemonu nebyla předána celá zpráva.\n";
+            std::cerr << "Error: the full message was not passed to the daemon.\n";
             return 1;
     }
 

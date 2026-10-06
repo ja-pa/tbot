@@ -101,7 +101,7 @@ int main() {
         rejects([&] { NotificationHttpServer duplicate(config, enqueue); });
         auto disabled_config = config; disabled_config.enabled = false;
         NotificationHttpServer disabled(disabled_config, enqueue); // Does not bind an already occupied port.
-        const std::string message = "Záloha dokončena\nDruhý řádek ✓";
+        const std::string message = "Backup complete\nSecond line ✓";
         auto reply = request(config.port, message);
         assert(reply.status == 202 && Json::parse(reply.body)["status"] == "queued");
         assert(pop() == message);
@@ -123,6 +123,7 @@ int main() {
         assert(request(config.port, message, "device:private-password", "text/plain",
                        "/v1/notifications", "POST", true).status == 202); assert(pop() == message);
         std::string multibyte;
+        // Two-byte UTF-8 characters exercise the byte limit, not a character limit.
         for (int i = 0; i < 1750; ++i) multibyte += "á";
         assert(request(config.port, multibyte).status == 202); assert(pop() == multibyte);
         assert(request(config.port, "x", "device:private-password", "Text/Plain ; charset = \"UTF-8\"").status == 202); assert(pop() == "x");

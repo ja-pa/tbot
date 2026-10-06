@@ -155,7 +155,7 @@ NotificationHttpServer::NotificationHttpServer(const NotificationHttpConfig& con
     address.sin_family = AF_INET;
     address.sin_port = htons(static_cast<unsigned short>(config.port));
     if (inet_pton(AF_INET, config.listen_address.c_str(), &address.sin_addr) != 1)
-        throw std::runtime_error("Neplatná naslouchací HTTP adresa");
+        throw std::runtime_error("Invalid HTTP listen address");
     impl_->daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, config.port, nullptr, nullptr,
         &Impl::access, impl_.get(),
         MHD_OPTION_SOCK_ADDR, reinterpret_cast<sockaddr*>(&address),
@@ -164,7 +164,7 @@ NotificationHttpServer::NotificationHttpServer(const NotificationHttpConfig& con
         MHD_OPTION_CONNECTION_MEMORY_LIMIT, static_cast<std::size_t>(16384),
         MHD_OPTION_NOTIFY_COMPLETED, &Impl::completed, nullptr,
         MHD_OPTION_END);
-    if (!impl_->daemon) throw std::runtime_error("Spuštění HTTP API selhalo; ověřte lokální IP adresu a obsazení portu");
+    if (!impl_->daemon) throw std::runtime_error("Failed to start the HTTP API; check the local IP address and whether the port is in use");
 }
 
 NotificationHttpServer::~NotificationHttpServer() = default;

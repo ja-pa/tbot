@@ -32,13 +32,13 @@ std::string trim_output(std::string output) {
 std::string run_script(const std::filesystem::path& script) {
     const auto script_text = script.string();
     if (access(script_text.c_str(), X_OK) != 0) {
-        throw std::runtime_error("Skript neexistuje nebo není spustitelný: " + script_text);
+        throw std::runtime_error("Script does not exist or is not executable: " + script_text);
     }
 
     const std::string command = "timeout -s KILL 10 " + script_text + " 2>&1";
     FILE* pipe = popen(command.c_str(), "r");
     if (pipe == nullptr) {
-        throw std::runtime_error("Nepodařilo se spustit skript: " +
+        throw std::runtime_error("Failed to start script: " +
                                  std::string(std::strerror(errno)));
     }
 
@@ -57,33 +57,33 @@ std::string run_script(const std::filesystem::path& script) {
     if (std::ferror(pipe)) {
         const int error = errno;
         pclose(pipe);
-        throw std::runtime_error("Čtení výstupu skriptu selhalo: " +
+        throw std::runtime_error("Failed to read script output: " +
                                  std::string(std::strerror(error)));
     }
 
     const int status = pclose(pipe);
     if (status < 0) {
-        throw std::runtime_error("Čekání na skript selhalo: " +
+        throw std::runtime_error("Failed to wait for script: " +
                                  std::string(std::strerror(errno)));
     }
 
     output = trim_output(std::move(output));
     if (output_truncated) {
-        output += "\n… (výstup byl zkrácen)";
+        output += "\n… (output truncated)";
     }
 
     const int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     if ((WIFEXITED(status) &&
          (exit_code == timeout_exit_code || exit_code == killed_exit_code)) ||
         (WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL)) {
-        throw std::runtime_error("Skript překročil časový limit 10 sekund");
+        throw std::runtime_error("Script exceeded the 10-second timeout");
     }
     if (!WIFEXITED(status) || exit_code != 0) {
-        throw std::runtime_error("Skript skončil s kódem " + std::to_string(exit_code) +
+        throw std::runtime_error("Script exited with code " + std::to_string(exit_code) +
                                  (output.empty() ? std::string{} : ": " + output));
     }
     if (output.empty()) {
-        return "Skript skončil úspěšně bez výstupu.";
+        return "Script completed successfully without output.";
     }
     return output;
 }

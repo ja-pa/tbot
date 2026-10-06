@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     const pid_t child = fork();
     assert(child >= 0);
     if (child == 0) {
-        execl(argv[1], argv[1], "--socket", socket_text.c_str(), "testovací zpráva", nullptr);
+        execl(argv[1], argv[1], "--socket", socket_text.c_str(), "test message ✓", nullptr);
         _exit(127);
     }
 
@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
     char buffer[128]{};
     const ssize_t received = recv(server, buffer, sizeof(buffer), 0);
     assert(received > 0);
-    assert(std::string(buffer, static_cast<std::size_t>(received)) == "testovací zpráva");
+    assert(std::string(buffer, static_cast<std::size_t>(received)) == "test message ✓");
 
     close(server);
     unlink(socket_path.c_str());

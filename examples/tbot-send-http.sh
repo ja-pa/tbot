@@ -6,9 +6,9 @@ TBOT_URL="${TBOT_URL:-http://192.168.1.1:8088}"
 TBOT_USER="${TBOT_USER:-notifier}"
 
 usage() {
-    printf 'Použití: bash %s "Zpráva do Telegramu"\n' "${0##*/}"
-    printf 'Nastavení: TBOT_URL (adresa a port routeru), TBOT_USER (HTTP uživatel).\n'
-    printf 'Heslo HTTP API si vyžádá curl. Úspěch znamená přijetí do fronty.\n'
+    printf 'Usage: bash %s "Message to Telegram"\n' "${0##*/}"
+    printf 'Settings: TBOT_URL (router address and port), TBOT_USER (HTTP username).\n'
+    printf 'curl prompts for the HTTP API password. Success means the message was queued.\n'
 }
 
 if [[ "${1:-}" == '--help' || "${1:-}" == '-h' ]]; then

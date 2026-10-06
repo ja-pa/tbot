@@ -18,7 +18,7 @@ TwoFactor::TwoFactor(Secrets secrets, SteadyNow steady, UnixNow unix_now)
     std::unordered_set<std::string> unique;
     for (const auto& [id, secret] : secrets_) {
         if (id <= 0 || !valid_secret(secret) || !unique.insert(secret).second)
-            throw std::runtime_error("2FA vyžaduje unikátní klíče: 32 znaků A-Z a 2-7 a kladné user_id");
+            throw std::runtime_error("2FA requires unique secrets: 32 characters from A-Z and 2-7, and positive user_id values");
     }
 }
 bool TwoFactor::valid_secret(std::string_view secret) {
@@ -32,7 +32,7 @@ std::string TwoFactor::generate_secret() {
     while (offset < random.size()) {
         const auto n = getrandom(random.data() + offset, random.size() - offset, 0);
         if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) throw std::runtime_error("Nelze získat bezpečnou náhodu pro 2FA");
+        if (n <= 0) throw std::runtime_error("Cannot obtain secure randomness for 2FA");
         offset += static_cast<std::size_t>(n);
     }
     constexpr std::string_view alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

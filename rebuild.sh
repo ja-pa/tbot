@@ -12,13 +12,13 @@ cmake \
   -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug
 
-echo "==> Provádím čistý build"
+echo "==> Performing a clean build"
 cmake --build "${build_dir}" --clean-first
 
-echo "==> Spouštím testy"
+echo "==> Running tests"
 ctest --test-dir "${build_dir}" --output-on-failure
 
 echo
-echo "Build je hotový. config.json zůstal beze změny."
-echo "Spuštění: ${build_dir}/tbot -c ${project_dir}/config.json"
+echo "Build complete. config.json is unchanged."
+echo "Run: ${build_dir}/tbot -c ${project_dir}/config.json"
 

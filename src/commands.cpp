@@ -9,16 +9,16 @@ namespace tbot {
 
 void CommandRegistry::add(Command command) {
     if (command.name == "auth" || command.name == "lock") {
-        throw std::invalid_argument("Vyhrazený příkaz: " + command.name);
+        throw std::invalid_argument("Reserved command: " + command.name);
     }
     if (command.name.empty()) {
-        throw std::invalid_argument("Jméno příkazu nesmí být prázdné");
+        throw std::invalid_argument("Command name must not be empty");
     }
     if (!command.handler) {
-        throw std::invalid_argument("Příkaz musí mít handler: " + command.name);
+        throw std::invalid_argument("Command must have a handler: " + command.name);
     }
     if (indexes_.contains(command.name)) {
-        throw std::invalid_argument("Duplicitní příkaz: " + command.name);
+        throw std::invalid_argument("Duplicate command: " + command.name);
     }
 
     const auto index = commands_.size();
@@ -51,12 +51,12 @@ const std::vector<Command>& CommandRegistry::all() const noexcept {
 void register_builtin_commands(CommandRegistry& registry) {
     registry.add({
         .name = "start",
-        .description = "Zobrazit hlavní nabídku",
+        .description = "Show the main menu",
         .button = std::nullopt,
         .handler = [](const CommandContext&) {
             return CommandResponse{
-                .text = "Vítej v OpenWrt Telegram botovi.\n"
-                        "Vyber požadovanou akci pomocí tlačítek níže.",
+                .text = "Welcome to the OpenWrt Telegram bot.\n"
+                        "Choose an action using the buttons below.",
                 .show_menu = true,
             };
         },
@@ -64,12 +64,12 @@ void register_builtin_commands(CommandRegistry& registry) {
 
     registry.add({
         .name = "help",
-        .description = "Zobrazit nápovědu",
-        .button = CommandButton{.text = "ℹ️ Nápověda", .row = 2},
+        .description = "Show help",
+        .button = CommandButton{.text = "ℹ️ Help", .row = 2},
         .handler = [](const CommandContext&) {
             return CommandResponse{
-                .text = "Co chceš zjistit? Vyber jednu z možností níže.\n\n"
-                        "Textové příkazy zůstávají dostupné jako alternativa.",
+                .text = "What would you like to check? Choose an option below.\n\n"
+                        "You can also use text commands.",
                 .show_menu = true,
             };
         },
@@ -77,7 +77,7 @@ void register_builtin_commands(CommandRegistry& registry) {
 
     registry.add({
         .name = "version",
-        .description = "Verze aplikace",
+        .description = "Application version",
         .button = std::nullopt,
         .handler = [](const CommandContext&) {
             return CommandResponse{.text = "tbot 0.1.0"};

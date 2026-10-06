@@ -40,8 +40,8 @@ int main() {
         {"notifications", {{"chat_ids", {INT64_C(-9223372036854775807)}}, {"socket_path", "/tmp/test.sock"}}},
         {"commands_file", "custom.json"}, {"future", {{"enabled", true}}}
     };
-    Json original_commands = {{"future", 42}, {"commands", {{{"name", "status"}, {"description", "Stav"},
-        {"script", "script.sh"}, {"custom", "keep me"}, {"button", {{"text", "Stav"}, {"row", 0}, {"future", 1}}}}}}};
+    Json original_commands = {{"future", 42}, {"commands", {{{"name", "status"}, {"description", "Status"},
+        {"script", "script.sh"}, {"custom", "keep me"}, {"button", {{"text", "Status"}, {"row", 0}, {"future", 1}}}}}}};
     original["notifications"]["http"] = {{"enabled", true}, {"listen_address", "127.0.0.1"},
         {"port", 8088}, {"username", "device"}, {"password", "private-http-password"}, {"future", 123}};
     write(config, original.dump()); write(commands, original_commands.dump());
