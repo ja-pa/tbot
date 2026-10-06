@@ -1,0 +1,146 @@
+#include "tbot/application.hpp"
+#include "tbot/commands.hpp"
+#include "tbot/config.hpp"
+#include "tbot/qr_code.hpp"
+
+#include <atomic>
+#include <charconv>
+#include <csignal>
+#include <cstdint>
+#include <filesystem>
+#include <iostream>
+#include <optional>
+#include <string_view>
+#include <unistd.h>
+
+#include <nlohmann/json.hpp>
+
+namespace {
+
+std::atomic_bool stop_requested{false};
+
+void request_stop(int) {
+    stop_requested.store(true);
+}
+
+void print_help(std::string_view program) {
+    std::cout
+        << "tbot 0.1.0\n\n"
+        << "Použití:\n"
+        << "  " << program << " -c <soubor>\n"
+        << "  " << program << " -g <user_id> [-a]\n\n"
+        << "Volby:\n"
+        << "  -g, --generate-2fa-secret <user_id>\n"
+        << "                           Vygeneruje JSON, otpauth URI a QR kód\n"
+        << "  -a, --qr-ascii          Vykreslí QR bez ANSI barev a Unicode\n"
+        << "  -c, --config <soubor>  Cesta k JSON konfiguraci\n"
+        << "  -h, --help             Zobrazí tuto nápovědu\n\n"
+        << "Bez volby -c se aplikace nespustí a zobrazí pouze tuto nápovědu.\n";
+}
+
+std::optional<std::int64_t> parse_user_id(std::string_view value) {
+    std::int64_t result{};
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), result);
+    if (error != std::errc{} || end != value.data() + value.size() || result <= 0) {
+        return std::nullopt;
+    }
+    return result;
+}
+
+}  // namespace
+
+int main(int argc, char* argv[]) {
+    std::optional<std::filesystem::path> config_path;
+    std::optional<std::int64_t> generate_for_user;
+    bool qr_ascii = false;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view argument(argv[i]);
+        if (argument == "-h" || argument == "--help") {
+            print_help(argv[0]);
+            return 0;
+        }
+        if (argument == "-g" || argument == "--generate-2fa-secret") {
+            if (++i >= argc) {
+                std::cerr << "Chyba: za " << argument << " chybí Telegram user_id.\n\n";
+                print_help(argv[0]);
+                return 2;
+            }
+            generate_for_user = parse_user_id(argv[i]);
+            if (!generate_for_user) {
+                std::cerr << "Chyba: user_id musí být kladné celé číslo.\n";
+                return 2;
+            }
+            continue;
+        }
+        if (argument == "-a" || argument == "--qr-ascii") {
+            qr_ascii = true;
+            continue;
+        }
+        if (argument == "-c" || argument == "--config") {
+            if (++i >= argc) {
+                std::cerr << "Chyba: za " << argument << " chybí cesta k souboru.\n\n";
+                print_help(argv[0]);
+                return 2;
+            }
+            config_path = argv[i];
+            continue;
+        }
+
+        std::cerr << "Chyba: neznámá volba " << argument << "\n\n";
+        print_help(argv[0]);
+        return 2;
+    }
+
+    if (qr_ascii && !generate_for_user) {
+        std::cerr << "Volbu -a/--qr-ascii lze použít jen s "
+                     "-g/--generate-2fa-secret.\n";
+        return 2;
+    }
+    if (generate_for_user) {
+        if (config_path) {
+            std::cerr << "Generování klíče nelze kombinovat s --config.\n";
+            return 2;
+        }
+        try {
+            const auto secret = tbot::TwoFactor::generate_secret();
+            const std::string user_id = std::to_string(*generate_for_user);
+            const std::string uri = "otpauth://totp/tbot-wrt:" + user_id + "?secret=" + secret +
+                "&issuer=tbot-wrt&algorithm=SHA1&digits=6&period=30";
+            const tbot::QrCode qr(uri);
+            const nlohmann::json user = {
+                {"user_id", *generate_for_user},
+                {"secret", secret},
+            };
+            std::cout << "Položka do telegram.two_factor_users:\n"
+                      << user.dump(2) << "\n\notpauth URI:\n" << uri << "\n\n"
+                      << qr.render_terminal(!qr_ascii && isatty(STDOUT_FILENO));
+            return 0;
+        } catch (const std::exception& error) {
+            std::cerr << error.what() << '\n';
+            return 1;
+        }
+    }
+    if (!config_path) {
+        print_help(argv[0]);
+        return 0;
+    }
+
+    std::signal(SIGINT, request_stop);
+    std::signal(SIGTERM, request_stop);
+
+    try {
+        auto config = tbot::TbotConfig::load(*config_path);
+        tbot::CommandRegistry commands;
+        tbot::register_builtin_commands(commands);
+        tbot::register_script_commands(commands, config.commands().items());
+
+        tbot::Application application(std::move(config), std::move(commands));
+        application.run(stop_requested);
+    } catch (const std::exception& error) {
+        std::cerr << "Chyba: " << error.what() << '\n';
+        return 1;
+    }
+
+    return 0;
+}

@@ -1,0 +1,8 @@
+/build/
+/config.json
+/commands.json
+/.cache/
+*.log
+*.tmp
+.vscode/
+.idea/
