@@ -155,6 +155,46 @@ int main() {
     Application restarted(TbotConfig::load(dir / "config.json"), registry, steady, wall);
     assert(restarted.menu(user).dump().find("command:private") == std::string::npos);
 
+    // Menu footer and two-message authentication use the same access checks.
+    const auto footer = [&](const CommandContext& ctx) {
+        return restarted.menu(ctx).at("inline_keyboard").back();
+    };
+    assert(footer(user).at(0).at("callback_data") == "command:auth");
+    assert(footer(user).back().at("callback_data") == "command:help");
+    assert(footer(group).size() == 1);
+    assert(!restarted.execute(code_at(secret, unix_time), user).show_menu);
+    restarted.execute("/auth", user);
+    assert(!restarted.execute(code_at(secret, unix_time), other).show_menu);
+    assert(!restarted.execute(code_at(secret, unix_time), group).show_menu);
+    assert(!restarted.execute("wrong", user).show_menu);
+    assert(restarted.execute("  " + code_at(secret, unix_time) + "\n", user).show_menu);
+    assert(footer(user).at(0).at("callback_data") == "command:lock");
+    restarted.execute("/lock", user);
+    assert(footer(user).at(0).at("callback_data") == "command:auth");
+    unix_time += 30;
+    assert(!restarted.execute(code_at(secret, unix_time), user).show_menu);
+    restarted.execute("/auth", user);
+    now += 120s;
+    assert(restarted.execute(code_at(secret, unix_time), user).text.find("expired") != std::string::npos);
+    assert(footer(user).at(0).at("callback_data") == "command:auth");
+    restarted.execute("/auth", user);
+    restarted.execute("/lock", user);
+    assert(!restarted.execute(code_at(secret, unix_time), user).show_menu);
+    restarted.execute("/auth", user);
+    for (int i = 0; i < 5; ++i) restarted.execute("bad", user);
+    assert(!restarted.execute(code_at(secret, unix_time), user).show_menu);
+    now += 300s;
+    restarted.execute("/auth", user);
+    assert(restarted.execute(code_at(secret, unix_time), user).show_menu);
+    now += 300s;
+    assert(footer(user).at(0).at("callback_data") == "command:auth");
+
+    config["telegram"]["help_text"] = "My custom help\nSecond line";
+    Application custom(TbotConfig::from_json(dir / "config.json", config,
+        nlohmann::json{{"commands", nlohmann::json::array()}}), registry, steady, wall);
+    assert(custom.execute("/help", user).text == "My custom help\nSecond line");
+    assert(custom.execute("/help", user).show_menu);
+
     // Configuration must propagate the flag and reject ambiguous/invalid secrets.
     std::ofstream(dir / "script.sh") << "#!/bin/sh\nexit 0\n";
     std::filesystem::permissions(dir / "script.sh", std::filesystem::perms::owner_all);

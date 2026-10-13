@@ -263,3 +263,19 @@ logging message contents or credentials.
 The default socket `/tmp/tbot-wrt.sock` and TOTP issuer `tbot-wrt` remain unchanged
 for existing installations. Configuration format and paired secrets are compatible.
 English built-in text does not rewrite user-defined labels, scripts or messages.
+
+## Menu, authentication and custom help
+
+The bottom menu row contains **Auth** (or **Lock** while authenticated) and
+**Help**. Authentication controls appear only in private chats. Tap **Auth** or
+send `/auth`, then paste the six-digit authenticator code as a separate message
+within two minutes. A failed attempt can be retried within that window. Five
+failed attempts block verification for five minutes. `/auth 123456` also works.
+Successful authentication lasts five minutes; **Lock** or `/lock` ends it and
+cancels pending code entry. After access expires, the menu returns to **Auth**.
+
+Set `telegram.help_text` in `config.json` to customize the entire Help response
+without recompiling. Use `\n` for line breaks in the JSON string and restart the
+bot after editing. If omitted, the bot uses its built-in English help. The text
+is maintained manually: add descriptions of your configured script commands as
+needed. The bot does not append or generate a command list.

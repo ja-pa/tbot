@@ -32,6 +32,8 @@ private:
     CommandRegistry commands_;
     TelegramClient telegram_;
     TwoFactor two_factor_;
+    TwoFactor::SteadyNow steady_;
+    std::unordered_map<std::int64_t, TwoFactor::Clock::time_point> awaiting_code_;
     long long next_update_id_{0};
 };
 

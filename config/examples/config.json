@@ -5,6 +5,7 @@
       123456789
     ],
     "poll_timeout_seconds": 30,
+    "help_text": "Choose an option below.\n\n/start - Show the menu\n/help - Show help\n/version - Show version\n/auth - Send your authenticator code in the next message\n/lock - Lock access\n\nAuthentication lasts 5 minutes.",
     "two_factor_users": []
   },
   "notifications": {

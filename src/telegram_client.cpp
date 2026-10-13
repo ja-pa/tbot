@@ -34,7 +34,7 @@ using CurlHeaders = std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>;
 TelegramClient::TelegramClient(std::string token)
     : api_base_("https://api.telegram.org/bot" + std::move(token) + "/") {}
 
-nlohmann::json main_menu_markup(const CommandRegistry& commands, bool unlocked) {
+nlohmann::json main_menu_markup(const CommandRegistry& commands, bool unlocked, bool show_auth) {
     std::size_t row_count = 0;
     for (const auto& command : commands.all()) {
         if (command.name != "help" && command.enabled && command.button &&
@@ -60,13 +60,19 @@ nlohmann::json main_menu_markup(const CommandRegistry& commands, bool unlocked) 
     }
 
     rows.erase(std::remove_if(rows.begin(), rows.end(), [](const auto& row) { return row.empty(); }), rows.end());
+    nlohmann::json footer = nlohmann::json::array();
+    if (show_auth) footer.push_back({
+        {"text", unlocked ? "🔒 Lock" : "🔑 Auth"},
+        {"callback_data", unlocked ? "command:lock" : "command:auth"},
+    });
     if (const auto* help = commands.find("help");
         help && help->button && (!help->requires_2fa || unlocked)) {
-        rows.push_back(nlohmann::json::array({{
+        footer.push_back({
             {"text", help->button->text},
             {"callback_data", "command:help"},
-        }}));
+        });
     }
+    if (!footer.empty()) rows.push_back(std::move(footer));
     return {{"inline_keyboard", std::move(rows)}};
 }
 
@@ -93,7 +99,7 @@ nlohmann::json TelegramClient::request(std::string_view method,
     curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, write_response);
     curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &response_body);
     curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, static_cast<long>(timeout_seconds));
-    curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, "tbot/0.1.0");
+    curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, "tbot/0.1.1");
 
     const CURLcode result = curl_easy_perform(curl.get());
     if (result != CURLE_OK) {

@@ -34,7 +34,8 @@ Application::Application(TbotConfig config, CommandRegistry commands,
     : config_(std::move(config)),
       commands_(std::move(commands)),
       telegram_(config_.telegram().token),
-      two_factor_(config_.telegram().two_factor_secrets, std::move(steady), std::move(unix_now)) {}
+      two_factor_(config_.telegram().two_factor_secrets, steady, std::move(unix_now)),
+      steady_(std::move(steady)) {}
 
 bool Application::is_authorized(std::int64_t user_id) const {
     return config_.telegram().allowed_user_ids.contains(user_id);
@@ -43,23 +44,40 @@ bool Application::is_authorized(std::int64_t user_id) const {
 CommandResponse Application::execute(std::string_view input,
                                      const CommandContext& context) {
     if (!is_authorized(context.user_id)) return {.text = "Access denied"};
-    const std::string name = command_name_from_input(input, commands_);
+    std::string name = command_name_from_input(input, commands_);
     const bool private_chat = context.private_chat && context.chat_id == context.user_id;
+    bool standalone_code = false;
+    if (private_chat && name.empty() && !input.starts_with('/')) {
+        const auto pending = awaiting_code_.find(context.user_id);
+        if (pending != awaiting_code_.end()) {
+            if (steady_() >= pending->second) {
+                awaiting_code_.erase(pending);
+                return {.text = "Code entry expired. Tap Auth to try again.", .show_menu = true};
+            }
+            name = "auth";
+            standalone_code = true;
+        }
+    }
     if (name == "auth" || name == "lock") {
         if (!private_chat) return {.text = "Authentication is only available in private chats."};
         if (name == "lock") {
+            awaiting_code_.erase(context.user_id);
             two_factor_.lock(context.user_id);
             return {.text = "Access locked.", .show_menu = true};
         }
         const auto separator = input.find_first_of(" \t\r\n");
-        if (separator == std::string_view::npos)
-            return {.text = "Use /auth 123456 with the code from your authenticator app."};
-        auto code = input.substr(separator);
+        auto code = standalone_code ? input :
+            (separator == std::string_view::npos ? std::string_view{} : input.substr(separator));
         const auto first = code.find_first_not_of(" \t\r\n");
         if (first == std::string_view::npos) code = {};
         else code = code.substr(first, code.find_last_not_of(" \t\r\n") - first + 1);
+        if (code.empty() && !standalone_code) {
+            awaiting_code_[context.user_id] = steady_() + std::chrono::minutes(2);
+            return {.text = "Send the 6-digit code from your authenticator app. You have 2 minutes."};
+        }
         if (!two_factor_.verify(context.user_id, code))
             return {.text = "Authentication failed. Check your code and 2FA settings. After five failed attempts, wait 5 minutes."};
+        awaiting_code_.erase(context.user_id);
         return {.text = "Authenticated for 5 minutes. Use /lock to end access.", .show_menu = true};
     }
     const auto* command = commands_.find(name);
@@ -72,8 +90,7 @@ CommandResponse Application::execute(std::string_view input,
 
     try {
         auto response = command->handler(context);
-        if (private_chat && (name == "start" || name == "help"))
-            response.text += "\n\n/auth 123456 — authenticate for 5 minutes\n/lock — lock access";
+        if (name == "help") response.text = config_.telegram().help_text;
         return response;
     } catch (const std::exception& error) {
         return {
@@ -85,14 +102,15 @@ CommandResponse Application::execute(std::string_view input,
 nlohmann::json Application::menu(const CommandContext& context) const {
     return main_menu_markup(commands_, is_authorized(context.user_id) &&
         context.private_chat && context.chat_id == context.user_id &&
-        two_factor_.authenticated(context.user_id));
+        two_factor_.authenticated(context.user_id),
+        is_authorized(context.user_id) && context.private_chat && context.chat_id == context.user_id);
 }
 
 void Application::refresh_menus(bool all) {
     for (auto it = unlocked_menus_.begin(); it != unlocked_menus_.end();) {
         if (!all && two_factor_.authenticated(it->first)) { ++it; continue; }
         try {
-            telegram_.edit_menu(it->first, it->second, main_menu_markup(commands_));
+            telegram_.edit_menu(it->first, it->second, main_menu_markup(commands_, false, true));
             it = unlocked_menus_.erase(it);
         } catch (const std::exception&) {
             // Keep the id and retry; authorization never depends on the edit succeeding.
@@ -108,7 +126,7 @@ void Application::send_response(const CommandContext& context, const CommandResp
         const auto old = unlocked_menus_.find(context.user_id);
         if (old != unlocked_menus_.end()) {
             try {
-                telegram_.edit_menu(context.user_id, old->second, main_menu_markup(commands_));
+                telegram_.edit_menu(context.user_id, old->second, main_menu_markup(commands_, false, true));
                 unlocked_menus_.erase(old);
             } catch (const std::exception&) {
                 // Still deliver the response, but do not create another unlocked menu.
@@ -118,7 +136,10 @@ void Application::send_response(const CommandContext& context, const CommandResp
     }
     const bool old_menu_pending = unlocked_menus_.contains(context.user_id);
     const auto markup = response.show_menu
-        ? (old_menu_pending ? main_menu_markup(commands_) : menu(context)) : nlohmann::json{};
+        ? (old_menu_pending
+            ? main_menu_markup(commands_, false, context.private_chat && context.chat_id == context.user_id)
+            : menu(context))
+        : nlohmann::json{};
     const auto id = telegram_.send_message(context.chat_id, response.text, markup);
     if (!old_menu_pending && response.show_menu && context.private_chat && context.chat_id == context.user_id &&
         two_factor_.authenticated(context.user_id)) unlocked_menus_[context.user_id] = id;

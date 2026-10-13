@@ -178,6 +178,7 @@ TbotConfig TbotConfig::from_json(const std::filesystem::path& config_path,
     try {
         const auto& telegram_json = json.at("telegram");
         telegram.token = telegram_json.at("token").get<std::string>();
+        telegram.help_text = telegram_json.value("help_text", telegram.help_text);
         if (telegram_json.contains("poll_timeout_seconds") &&
             (!telegram_json.at("poll_timeout_seconds").is_number_integer() ||
              telegram_json.at("poll_timeout_seconds") < 1 ||

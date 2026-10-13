@@ -80,7 +80,7 @@ void register_builtin_commands(CommandRegistry& registry) {
         .description = "Application version",
         .button = std::nullopt,
         .handler = [](const CommandContext&) {
-            return CommandResponse{.text = "tbot 0.1.0"};
+            return CommandResponse{.text = "tbot 0.1.1"};
         },
     });
 }

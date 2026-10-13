@@ -25,7 +25,7 @@ void request_stop(int) {
 
 void print_help(std::string_view program) {
     std::cout
-        << "tbot 0.1.0\n\n"
+        << "tbot 0.1.1\n\n"
         << "Usage:\n"
         << "  " << program << " -c <file>\n"
         << "  " << program << " -g <user_id> [-a]\n\n"

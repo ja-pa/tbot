@@ -264,7 +264,7 @@ int main() {
     assert(app.is_authorized(42));
     assert(!app.is_authorized(43));
     assert(app.execute("📊 Status", {.user_id = 42, .chat_id = 42, .private_chat = true}).text == "test script output");
-    assert(app.execute("/version", {.user_id = 42, .chat_id = 42, .private_chat = true}).text == "tbot 0.1.0");
+    assert(app.execute("/version", {.user_id = 42, .chat_id = 42, .private_chat = true}).text == "tbot 0.1.1");
     assert(app.execute("/help", {.user_id = 42, .chat_id = 42, .private_chat = true}).text.find("Choose an option") != std::string::npos);
     assert(app.execute("/help", {.user_id = 42, .chat_id = 42, .private_chat = true}).show_menu);
     assert(app.execute("/start", {.user_id = 42, .chat_id = 42, .private_chat = true}).text.find("Welcome") != std::string::npos);

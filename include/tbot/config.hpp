@@ -24,6 +24,14 @@ struct ScriptCommandConfig {
 
 struct TelegramConfig {
     std::string token;
+    std::string help_text{
+        "Choose an option below.\n\n"
+        "/start - Show the menu\n"
+        "/help - Show help\n"
+        "/version - Show version\n"
+        "/auth - Send your authenticator code in the next message\n"
+        "/lock - Lock access\n\n"
+        "Authentication lasts 5 minutes."};
     TwoFactor::Secrets two_factor_secrets;
     std::unordered_set<std::int64_t> allowed_user_ids;
     int poll_timeout_seconds{30};

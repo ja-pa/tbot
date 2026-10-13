@@ -30,7 +30,7 @@ void TelegramClient::answer_callback_query(std::string_view id, std::string_view
 }
 void TelegramClient::edit_menu(long long, long long, const nlohmann::json&) const {}
 // Menu rendering is tested with the real implementation in core_tests.cpp.
-nlohmann::json main_menu_markup(const CommandRegistry&, bool) {
+nlohmann::json main_menu_markup(const CommandRegistry&, bool, bool) {
     return {{"inline_keyboard", nlohmann::json::array()}};
 }
 }

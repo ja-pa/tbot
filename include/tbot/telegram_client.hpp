@@ -9,7 +9,7 @@
 
 namespace tbot {
 
-nlohmann::json main_menu_markup(const CommandRegistry& commands, bool unlocked = false);
+nlohmann::json main_menu_markup(const CommandRegistry& commands, bool unlocked = false, bool show_auth = false);
 
 class TelegramClient {
 public:
