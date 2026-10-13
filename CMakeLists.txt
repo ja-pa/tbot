@@ -71,6 +71,7 @@ target_include_directories(tbot-send PRIVATE include)
 target_compile_options(tbot-send PRIVATE -Wall -Wextra -Wpedantic)
 
 install(TARGETS tbot tbot-send RUNTIME DESTINATION bin)
+install(FILES LICENSE DESTINATION share/licenses/tbot RENAME tbot-MIT.txt)
 install(FILES third_party/tiny2fa/LICENSE
     DESTINATION share/licenses/tbot RENAME Tiny2FA-MIT.txt)
 install(FILES third_party/tiny2fa/include/google_pam/LICENSE

@@ -103,3 +103,8 @@ your own scripts when ready. Press Ctrl+C to stop.
 Built-in text is English. User-defined descriptions, button labels and messages
 can use other languages. Existing configuration, socket paths and paired 2FA
 secrets remain compatible.
+
+## License
+
+First-party code is licensed under the [MIT License](LICENSE). Bundled third-party
+code retains its own license notices, including MIT and Apache-2.0.
